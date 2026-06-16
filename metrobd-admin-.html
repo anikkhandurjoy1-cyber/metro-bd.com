@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MetroBD Admin Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800;900&family=Inter:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --primary:#FF2D78;--primary2:#FF6B2B;--accent:#00E5FF;
+  --dark:#08080F;--surface:#0F0F1A;--card:#14141F;--border:#1E1E2E;
+  --text:#F0F0F8;--muted:#7777AA;--green:#22C55E;--yellow:#F59E0B;
+  --red:#EF4444;--blue:#3B82F6;--purple:#8B5CF6;--sw:220px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;font-family:'Inter','Hind Siliguri',sans-serif;background:var(--dark);color:var(--text);font-size:14px;}
+
+/* LOGIN */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--dark);}
+.login-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:40px 32px;width:100%;max-width:380px;text-align:center;}
+.login-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:24px;}
+.logo-icon{width:44px;height:44px;background:linear-gradient(135deg,var(--primary),var(--primary2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:900;font-size:20px;color:#fff;transform:rotate(-5deg);}
+.logo-text{display:flex;flex-direction:column;line-height:1;text-align:left;}
+.logo-metro{font-family:'Syne',sans-serif;font-weight:900;font-size:22px;}
+.logo-bd{font-size:10px;color:var(--primary);letter-spacing:3px;font-weight:700;}
+.login-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:6px;}
+.login-sub{font-size:13px;color:var(--muted);margin-bottom:28px;font-family:'Hind Siliguri';}
+.login-input{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:12px 16px;border-radius:10px;font-size:14px;outline:none;margin-bottom:14px;transition:border-color 0.2s;}
+.login-input:focus{border-color:var(--primary);}
+.login-btn{width:100%;background:linear-gradient(135deg,var(--primary),var(--primary2));border:none;color:#fff;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Hind Siliguri',sans-serif;}
+.login-err{color:var(--red);font-size:13px;margin-top:10px;display:none;}
+
+/* SIDEBAR */
+.sidebar{position:fixed;top:0;left:0;width:var(--sw);height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;overflow-y:auto;}
+.sb-logo{padding:18px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.nav-sec{padding:10px 0;}
+.nav-lbl{font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;padding:4px 16px 6px;}
+.ni{display:flex;align-items:center;gap:9px;padding:9px 16px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:500;transition:all 0.15s;border-left:3px solid transparent;}
+.ni:hover{color:var(--text);background:rgba(255,255,255,0.03);}
+.ni.active{color:var(--primary);border-left-color:var(--primary);background:rgba(255,45,120,0.06);}
+.ni .ic{font-size:15px;width:18px;text-align:center;}
+.nb{margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;}
+.nb.y{background:var(--yellow);color:#000;}
+.nb.g{background:var(--green);}
+
+/* TOPBAR */
+.topbar{position:fixed;top:0;left:var(--sw);right:0;height:54px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;z-index:99;}
+.tb-title{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;}
+.tb-right{display:flex;align-items:center;gap:12px;}
+.tb-date{font-size:12px;color:var(--muted);}
+.tb-admin{background:rgba(255,45,120,0.1);border:1px solid rgba(255,45,120,0.3);color:var(--primary);padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;}
+.menu-btn{display:none;background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;}
+
+/* MAIN */
+.main{margin-left:var(--sw);padding-top:54px;min-height:100vh;}
+.page{display:none;padding:20px;}
+.page.active{display:block;}
+
+/* CARDS */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;transition:border-color 0.2s;}
+.sc:hover{border-color:var(--primary);}
+.sc-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:10px;}
+.sc-icon.pk{background:rgba(255,45,120,0.12);}
+.sc-icon.cy{background:rgba(0,229,255,0.12);}
+.sc-icon.gn{background:rgba(34,197,94,0.12);}
+.sc-icon.yw{background:rgba(245,158,11,0.12);}
+.sc-icon.bl{background:rgba(59,130,246,0.12);}
+.sc-icon.pu{background:rgba(139,92,246,0.12);}
+.sc-num{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;}
+.sc-lbl{font-size:12px;color:var(--muted);}
+
+/* TABLE */
+.tc{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.th{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.tt{font-weight:700;font-size:14px;}
+table{width:100%;border-collapse:collapse;}
+th{background:rgba(255,255,255,0.02);padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:0.5px;text-transform:uppercase;border-bottom:1px solid var(--border);}
+td{padding:11px 14px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:13px;vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(255,255,255,0.02);}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;}
+.Processing{background:rgba(59,130,246,0.15);color:#60A5FA;}
+.Completed{background:rgba(34,197,94,0.15);color:#4ADE80;}
+.Pending{background:rgba(245,158,11,0.15);color:#FCD34D;}
+.Hold{background:rgba(139,92,246,0.15);color:#A78BFA;}
+.Canceled{background:rgba(239,68,68,0.15);color:#F87171;}
+.Invoiced{background:rgba(0,229,255,0.15);color:#00E5FF;}
+.Delivered{background:rgba(34,197,94,0.15);color:#4ADE80;}
+.Active{background:rgba(34,197,94,0.15);color:#4ADE80;}
+.Inactive{background:rgba(239,68,68,0.15);color:#F87171;}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all 0.15s;font-family:'Inter',sans-serif;}
+.btn-p{background:var(--primary);color:#fff;}
+.btn-p:hover{opacity:0.85;}
+.btn-s{background:var(--green);color:#fff;}
+.btn-w{background:var(--yellow);color:#000;}
+.btn-d{background:var(--red);color:#fff;}
+.btn-o{background:transparent;border:1px solid var(--border);color:var(--text);}
+.btn-o:hover{border-color:var(--primary);color:var(--primary);}
+.btn-c{background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.3);color:var(--accent);}
+.btn-sm{padding:5px 10px;font-size:12px;}
+
+/* FORMS */
+.fg{display:flex;flex-direction:column;gap:5px;margin-bottom:14px;}
+.fg label{font-size:12px;font-weight:600;color:var(--muted);}
+.fg input,.fg select,.fg textarea{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:10px 13px;border-radius:8px;font-size:13px;font-family:'Inter','Hind Siliguri',sans-serif;outline:none;transition:border-color 0.2s;}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--primary);}
+.fg textarea{resize:vertical;min-height:80px;}
+.fg select option{background:var(--card);}
+.fg-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.fg-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+
+/* PAGE HEADER */
+.ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;}
+.pt{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;}
+
+/* STATUS TABS */
+.stabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+.stab{padding:6px 13px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);color:var(--muted);transition:all 0.15s;}
+.stab:hover,.stab.active{border-color:var(--primary);color:var(--primary);background:rgba(255,45,120,0.08);}
+
+/* FILTER BAR */
+.fb{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.fb input,.fb select{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 11px;border-radius:7px;font-size:13px;outline:none;}
+.fb input:focus,.fb select:focus{border-color:var(--primary);}
+
+/* MODAL */
+.mo{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.85);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;}
+.mo.active{display:flex;}
+.md{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;position:relative;}
+.md-title{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;margin-bottom:18px;}
+.mc{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;}
+
+/* SETTINGS */
+.sl{display:flex;gap:16px;}
+.ssb{width:170px;flex-shrink:0;}
+.sni{padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--muted);margin-bottom:3px;transition:all 0.15s;}
+.sni:hover,.sni.active{background:rgba(255,45,120,0.08);color:var(--primary);}
+.sc2{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;}
+.ss-title{font-weight:700;font-size:14px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+
+/* BANNER PREVIEW */
+.banner-preview{width:100%;height:120px;border-radius:10px;overflow:hidden;margin-bottom:8px;display:flex;align-items:center;justify-content:center;background:var(--surface);}
+.banner-preview img{width:100%;height:100%;object-fit:cover;}
+
+/* TODAY ROW */
+.tr2{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;background:var(--surface);border-radius:8px;margin-bottom:6px;}
+.tr2-l{font-size:13px;color:var(--muted);}
+.tr2-v{font-size:15px;font-weight:700;}
+
+/* MISC */
+.divider{height:1px;background:var(--border);margin:14px 0;}
+.es{text-align:center;padding:40px;color:var(--muted);}
+.es .ei{font-size:36px;margin-bottom:10px;}
+.ci{display:flex;gap:5px;}
+.thumb{width:34px;height:34px;border-radius:6px;background:var(--surface);display:inline-flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;}
+.thumb img{width:100%;height:100%;object-fit:cover;}
+
+#toast{display:none;position:fixed;bottom:20px;right:20px;z-index:999;background:var(--green);color:#fff;padding:11px 18px;border-radius:10px;font-weight:600;font-size:13px;box-shadow:0 4px 20px rgba(0,0,0,0.4);}
+
+@media(max-width:768px){
+  .sidebar{transform:translateX(-100%);transition:transform 0.3s;}
+  .sidebar.open{transform:translateX(0);}
+  .main{margin-left:0;}
+  .topbar{left:0;}
+  .menu-btn{display:block;}
+  .fg-2,.fg-3{grid-template-columns:1fr;}
+  .stats-grid{grid-template-columns:repeat(2,1fr);}
+  .sl{flex-direction:column;}
+  .ssb{width:100%;}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo-icon">M</div>
+      <div class="logo-text"><span class="logo-metro">Metro</span><span class="logo-bd">BD</span></div>
+    </div>
+    <div class="login-title">Admin Panel</div>
+    <div class="login-sub">লগইন করুন</div>
+    <input class="login-input" type="text" id="l-user" placeholder="Username" value="admin">
+    <input class="login-input" type="password" id="l-pass" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">🔐 Login</button>
+    <div class="login-err" id="login-err">❌ Username বা Password ভুল!</div>
+  </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div id="admin-panel" style="display:none;">
+
+<!-- SIDEBAR -->
+<div class="sidebar" id="sidebar">
+  <div class="sb-logo">
+    <div class="logo-icon">M</div>
+    <div class="logo-text"><span class="logo-metro">Metro</span><span class="logo-bd">BD</span></div>
+  </div>
+  <div class="nav-sec">
+    <div class="nav-lbl">Main</div>
+    <div class="ni active" onclick="sp('dashboard')"><span class="ic">📊</span>Dashboard</div>
+    <div class="ni" onclick="sp('incomplete')"><span class="ic">⚠️</span>Incomplete Orders<span class="nb y" id="inc-badge">0</span></div>
+  </div>
+  <div class="nav-sec">
+    <div class="nav-lbl">Orders</div>
+    <div class="ni" onclick="sp('orders','all')"><span class="ic">🛒</span>All Orders<span class="nb" id="all-badge">0</span></div>
+    <div class="ni" onclick="sp('orders','Processing')"><span class="ic">⚙️</span>Processing</div>
+    <div class="ni" onclick="sp('orders','Invoiced')"><span class="ic">🧾</span>Invoiced</div>
+    <div class="ni" onclick="sp('orders','Delivered')"><span class="ic">🚚</span>Delivered</div>
+  </div>
+  <div class="nav-sec">
+    <div class="nav-lbl">Products</div>
+    <div class="ni" onclick="sp('products')"><span class="ic">📦</span>Products</div>
+    <div class="ni" onclick="sp('categories')"><span class="ic">🏷️</span>Categories</div>
+    <div class="ni" onclick="sp('couriers')"><span class="ic">🚀</span>Couriers</div>
+  </div>
+  <div class="nav-sec">
+    <div class="nav-lbl">Website</div>
+    <div class="ni" onclick="sp('banners')"><span class="ic">🖼️</span>Banner/Slider</div>
+  </div>
+  <div class="nav-sec">
+    <div class="nav-lbl">Reports</div>
+    <div class="ni" onclick="sp('rep-orders')"><span class="ic">📋</span>Order Report</div>
+    <div class="ni" onclick="sp('rep-products')"><span class="ic">📈</span>Product Report</div>
+    <div class="ni" onclick="sp('rep-courier')"><span class="ic">🚛</span>Courier Report</div>
+  </div>
+  <div class="nav-sec">
+    <div class="nav-lbl">System</div>
+    <div class="ni" onclick="sp('users')"><span class="ic">👤</span>Users</div>
+    <div class="ni" onclick="sp('settings')"><span class="ic">⚙️</span>Settings</div>
+    <div class="ni" onclick="doLogout()"><span class="ic">🚪</span>Logout</div>
+  </div>
+</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <button class="menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+    <div class="tb-title" id="pg-title">Dashboard</div>
+  </div>
+  <div class="tb-right">
+    <div class="tb-date" id="tb-date"></div>
+    <div class="tb-admin">👑 Admin</div>
+    <a href="index.html" target="_blank" class="btn btn-o btn-sm">🌐 Site দেখুন</a>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- DASHBOARD -->
+<div class="page active" id="pg-dashboard">
+  <div class="stats-grid">
+    <div class="sc" onclick="sp('orders','all')"><div class="sc-icon pk">🛒</div><div class="sc-num" id="d-total">0</div><div class="sc-lbl">Total Orders</div></div>
+    <div class="sc" onclick="sp('orders','Processing')"><div class="sc-icon bl">⚙️</div><div class="sc-num" id="d-proc">0</div><div class="sc-lbl">Processing</div></div>
+    <div class="sc" onclick="sp('orders','Payment Pending')"><div class="sc-icon yw">💳</div><div class="sc-num" id="d-pay">0</div><div class="sc-lbl">Payment Pending</div></div>
+    <div class="sc" onclick="sp('orders','On Hold')"><div class="sc-icon pu">⏸️</div><div class="sc-num" id="d-hold">0</div><div class="sc-lbl">On Hold</div></div>
+    <div class="sc" onclick="sp('orders','Canceled')"><div class="sc-icon" style="background:rgba(239,68,68,0.12)">❌</div><div class="sc-num" id="d-can">0</div><div class="sc-lbl">Canceled</div></div>
+    <div class="sc" onclick="sp('orders','Completed')"><div class="sc-icon gn">✅</div><div class="sc-num" id="d-comp">0</div><div class="sc-lbl">Completed</div></div>
+    <div class="sc"><div class="sc-icon cy">💰</div><div class="sc-num" id="d-rev">৳0</div><div class="sc-lbl">Revenue</div></div>
+    <div class="sc" onclick="sp('products')"><div class="sc-icon pk">📦</div><div class="sc-num" id="d-prods">0</div><div class="sc-lbl">Products</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+    <div class="tc">
+      <div class="th"><div class="tt">আজকের রিপোর্ট</div></div>
+      <div style="padding:14px;" id="today-report"></div>
+    </div>
+    <div class="tc">
+      <div class="th"><div class="tt">Recent Orders</div></div>
+      <table><thead><tr><th>Invoice</th><th>Customer</th><th>Total</th><th>Status</th></tr></thead>
+      <tbody id="recent-tb"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- INCOMPLETE -->
+<div class="page" id="pg-incomplete">
+  <div class="ph"><div><div class="pt">Incomplete Orders</div></div></div>
+  <div class="tc">
+    <div class="th"><div class="tt">Total <span id="inc-count">0</span></div>
+      <input type="text" placeholder="🔍 Search..." style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:7px;font-size:13px;outline:none;" oninput="renderIncomplete(this.value)">
+    </div>
+    <div style="overflow-x:auto;"><table>
+      <thead><tr><th>ID</th><th>Customer</th><th>Product</th><th>Total</th><th>Date</th><th>Action</th></tr></thead>
+      <tbody id="inc-tb"></tbody>
+    </table></div>
+    <div class="es" id="inc-empty"><div class="ei">✅</div>No incomplete orders</div>
+  </div>
+</div>
+
+<!-- ORDERS -->
+<div class="page" id="pg-orders">
+  <div class="ph">
+    <div><div class="pt">Orders</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-c btn-sm" onclick="exportCSV()">📥 CSV</button>
+      <button class="btn btn-s btn-sm" onclick="om('add-order-modal');resetOrderForm()">+ New Order</button>
+    </div>
+  </div>
+  <div class="stabs" id="o-stabs">
+    <div class="stab active" onclick="filterOS('all',this)">All</div>
+    <div class="stab" onclick="filterOS('Processing',this)">Processing</div>
+    <div class="stab" onclick="filterOS('Payment Pending',this)">Payment Pending</div>
+    <div class="stab" onclick="filterOS('On Hold',this)">On Hold</div>
+    <div class="stab" onclick="filterOS('Invoiced',this)">Invoiced</div>
+    <div class="stab" onclick="filterOS('Delivered',this)">Delivered</div>
+    <div class="stab" onclick="filterOS('Completed',this)">Completed</div>
+    <div class="stab" onclick="filterOS('Canceled',this)">Canceled</div>
+  </div>
+  <div class="fb">
+    <input type="text" placeholder="🔍 Search..." id="o-search" oninput="renderOrders()">
+    <select id="o-cfilter" onchange="renderOrders()"><option value="">All Couriers</option></select>
+    <input type="date" id="o-dfilter" onchange="renderOrders()">
+    <button class="btn btn-o btn-sm" onclick="clearOF()">Clear</button>
+  </div>
+  <div class="tc">
+    <div class="th">
+      <div class="tt">Total <span id="o-count">0</span> Orders</div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-o btn-sm" onclick="printInv()">🖨️ Print Invoice</button>
+        <button class="btn btn-o btn-sm" onclick="bulkStatus()">↕️ Bulk Status</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto;"><table>
+      <thead><tr><th><input type="checkbox" id="sel-all" onchange="selAll(this)"></th><th>Invoice</th><th>Customer</th><th>Product</th><th>Total</th><th>Courier</th><th>Date</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody id="o-tb"></tbody>
+    </table></div>
+    <div class="es" id="o-empty" style="display:none;"><div class="ei">📭</div>No orders found</div>
+  </div>
+</div>
+
+<!-- PRODUCTS -->
+<div class="page" id="pg-products">
+  <div class="ph">
+    <div class="pt">Products</div>
+    <button class="btn btn-p" onclick="om('prod-modal');editP=null;resetPF()">+ Add Product</button>
+  </div>
+  <div class="fb">
+    <input type="text" placeholder="🔍 Search..." id="p-search" oninput="renderProducts()">
+    <select id="p-cfilter" onchange="renderProducts()"><option value="">All Categories</option></select>
+    <select id="p-sfilter" onchange="renderProducts()"><option value="">All Status</option><option>Active</option><option>Inactive</option></select>
+  </div>
+  <div class="tc">
+    <div class="th"><div class="tt">Total <span id="p-count">0</span> Products</div></div>
+    <div style="overflow-x:auto;"><table>
+      <thead><tr><th>#</th><th>Image</th><th>Name</th><th>Category</th><th>Regular</th><th>Sale</th><th>Video</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody id="p-tb"></tbody>
+    </table></div>
+    <div class="es" id="p-empty"><div class="ei">📦</div>No products yet</div>
+  </div>
+</div>
+
+<!-- CATEGORIES -->
+<div class="page" id="pg-categories">
+  <div class="ph">
+    <div class="pt">Categories</div>
+    <button class="btn btn-p" onclick="om('cat-modal');editC=null;document.getElementById('c-name').value=''">+ Add Category</button>
+  </div>
+  <div class="tc">
+    <div class="th"><div class="tt">Total <span id="c-count">0</span></div></div>
+    <table><thead><tr><th>#</th><th>Name</th><th>Status</th><th>Action</th></tr></thead>
+    <tbody id="c-tb"></tbody></table>
+    <div class="es" id="c-empty"><div class="ei">🏷️</div>No categories</div>
+  </div>
+</div>
+
+<!-- COURIERS -->
+<div class="page" id="pg-couriers">
+  <div class="ph">
+    <div class="pt">Couriers</div>
+    <button class="btn btn-p" onclick="om('cou-modal');editCou=null;document.getElementById('cou-name').value='';document.getElementById('cou-charge').value=''">+ Add Courier</button>
+  </div>
+  <div class="tc">
+    <div class="th"><div class="tt">Total <span id="cou-count">0</span></div></div>
+    <table><thead><tr><th>#</th><th>Name</th><th>Charge</th><th>Status</th><th>Action</th></tr></thead>
+    <tbody id="cou-tb"></tbody></table>
+    <div class="es" id="cou-empty"><div class="ei">🚀</div>No couriers</div>
+  </div>
+</div>
+
+<!-- BANNERS -->
+<div class="page" id="pg-banners">
+  <div class="ph">
+    <div><div class="pt">Banner / Slider Management</div><div style="font-size:12px;color:var(--muted);margin-top:2px;">Customer site-এর slider এখান থেকে control করুন</div></div>
+    <button class="btn btn-p" onclick="om('banner-modal');editB=null;resetBF()">+ Add Banner</button>
+  </div>
+  <div class="tc">
+    <div class="th"><div class="tt">Total <span id="b-count">0</span> Banners</div></div>
+    <table><thead><tr><th>#</th><th>Preview</th><th>Title</th><th>Type</th><th>Status</th><th>Action</th></tr></thead>
+    <tbody id="b-tb"></tbody></table>
+    <div class="es" id="b-empty"><div class="ei">🖼️</div>No banners yet — add করুন!</div>
+  </div>
+</div>
+
+<!-- REPORT ORDERS -->
+<div class="page" id="pg-rep-orders">
+  <div class="ph"><div class="pt">Order Report</div><button class="btn btn-o btn-sm" onclick="window.print()">🖨️ Print</button></div>
+  <div class="tc" style="padding:14px;margin-bottom:14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <div class="fg" style="margin:0"><label>Start Date</label><input type="date" id="rs" onchange="renderRepO()"></div>
+      <div class="fg" style="margin:0"><label>End Date</label><input type="date" id="re" onchange="renderRepO()"></div>
+      <div class="fg" style="margin:0"><label>Status</label><select id="rss" onchange="renderRepO()"><option value="">All</option><option>Processing</option><option>Completed</option><option>Delivered</option><option>Canceled</option></select></div>
+    </div>
+  </div>
+  <div class="tc"><div style="overflow-x:auto;"><table>
+    <thead><tr><th>Date</th><th>Invoice</th><th>Customer</th><th>Product</th><th>Total</th><th>Courier</th><th>Status</th></tr></thead>
+    <tbody id="rep-o-tb"></tbody>
+  </table></div></div>
+</div>
+
+<!-- REPORT PRODUCTS -->
+<div class="page" id="pg-rep-products">
+  <div class="ph"><div class="pt">Product Report</div><button class="btn btn-o btn-sm" onclick="window.print()">🖨️ Print</button></div>
+  <div class="tc" style="padding:14px;margin-bottom:14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <div class="fg" style="margin:0"><label>Start Date</label><input type="date" id="rps" onchange="renderRepP()"></div>
+      <div class="fg" style="margin:0"><label>End Date</label><input type="date" id="rpe" onchange="renderRepP()"></div>
+      <div class="fg" style="margin:0"><label>Status</label><select id="rpss" onchange="renderRepP()"><option value="">All</option><option>Processing</option><option>Completed</option></select></div>
+    </div>
+  </div>
+  <div class="tc"><table>
+    <thead><tr><th>#</th><th>Date</th><th>Product</th><th>Qty</th></tr></thead>
+    <tbody id="rep-p-tb"></tbody>
+  </table></div>
+</div>
+
+<!-- REPORT COURIER -->
+<div class="page" id="pg-rep-courier">
+  <div class="ph"><div class="pt">Courier Report</div><button class="btn btn-o btn-sm" onclick="window.print()">🖨️ Print</button></div>
+  <div class="tc" style="padding:14px;margin-bottom:14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <div class="fg" style="margin:0"><label>Start Date</label><input type="date" id="rcs" onchange="renderRepC()"></div>
+      <div class="fg" style="margin:0"><label>End Date</label><input type="date" id="rce" onchange="renderRepC()"></div>
+      <div class="fg" style="margin:0"><label>Courier</label><select id="rcc" onchange="renderRepC()"><option value="">All</option></select></div>
+    </div>
+  </div>
+  <div class="tc"><div style="overflow-x:auto;"><table>
+    <thead><tr><th>Courier</th><th>Total</th><th>Processing</th><th>Completed</th><th>Delivered</th><th>Canceled</th></tr></thead>
+    <tbody id="rep-c-tb"></tbody>
+  </table></div></div>
+</div>
+
+<!-- USERS -->
+<div class="page" id="pg-users">
+  <div class="ph"><div class="pt">Users</div><button class="btn btn-p" onclick="om('user-modal');editU=null;resetUF()">+ Add User</button></div>
+  <div class="tc">
+    <div class="th"><div class="tt">Total <span id="u-count">0</span></div></div>
+    <table><thead><tr><th>#</th><th>Name</th><th>Phone</th><th>Email</th><th>Type</th><th>Status</th><th>Action</th></tr></thead>
+    <tbody id="u-tb"></tbody></table>
+    <div class="es" id="u-empty"><div class="ei">👤</div>No users</div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div class="page" id="pg-settings">
+  <div class="ph"><div class="pt">Website Settings</div></div>
+  <div class="sl">
+    <div class="ssb">
+      <div class="sni active" onclick="sst('general',this)">General</div>
+      <div class="sni" onclick="sst('delivery',this)">Delivery Charge</div>
+      <div class="sni" onclick="sst('invoice',this)">Invoice</div>
+      <div class="sni" onclick="sst('social',this)">Social Links</div>
+      <div class="sni" onclick="sst('analytics',this)">Analytics/Pixel</div>
+      <div class="sni" onclick="sst('blacklist',this)">Blacklist</div>
+      <div class="sni" onclick="sst('password',this)">Change Password</div>
+    </div>
+    <div style="flex:1;">
+      <div class="sc2" id="st-general">
+        <div class="ss-title">General Settings</div>
+        <div class="fg-2">
+          <div class="fg"><label>Site Name</label><input type="text" id="s-sn" placeholder="MetroBD"></div>
+          <div class="fg"><label>Site Title</label><input type="text" id="s-st" placeholder="Premium Gadget Shop"></div>
+          <div class="fg"><label>Phone Number</label><input type="text" id="s-ph" placeholder="01XXXXXXXXX"></div>
+          <div class="fg"><label>Phone Text</label><input type="text" id="s-pt" placeholder="অর্ডার করতে কল করুন"></div>
+          <div class="fg" style="grid-column:1/-1"><label>Address</label><input type="text" id="s-ad" placeholder="Dhaka, Bangladesh"></div>
+          <div class="fg" style="grid-column:1/-1"><label>Top Bar Info</label><input type="text" id="s-tb" placeholder="FREE DELIVERY সারা বাংলাদেশ"></div>
+          <div class="fg" style="grid-column:1/-1"><label>Thank You Text</label><input type="text" id="s-ty" placeholder="ধন্যবাদ অর্ডার করার জন্য!"></div>
+          <div class="fg" style="grid-column:1/-1"><label>Footer Copyright</label><input type="text" id="s-fc" placeholder="© 2025 MetroBD"></div>
+        </div>
+        <button class="btn btn-p" onclick="saveS('general')">✅ Save</button>
+      </div>
+      <div class="sc2" id="st-delivery" style="display:none;">
+        <div class="ss-title">Delivery Charge</div>
+        <div class="fg-2">
+          <div class="fg"><label>Inside Dhaka (৳)</label><input type="number" id="s-id" placeholder="0"></div>
+          <div class="fg"><label>Inside Dhaka Text</label><input type="text" id="s-idt" placeholder="Free Delivery"></div>
+          <div class="fg"><label>Outside Dhaka (৳)</label><input type="number" id="s-od" placeholder="0"></div>
+          <div class="fg"><label>Outside Dhaka Text</label><input type="text" id="s-odt" placeholder="Free Delivery"></div>
+        </div>
+        <button class="btn btn-p" onclick="saveS('delivery')">✅ Save</button>
+      </div>
+      <div class="sc2" id="st-invoice" style="display:none;">
+        <div class="ss-title">Invoice Settings</div>
+        <div class="fg-2">
+          <div class="fg"><label>Invoice Prefix</label><input type="text" id="s-ip" placeholder="MB"></div>
+          <div class="fg"><label>Per Page</label><select id="s-pp"><option>1</option><option selected>2</option><option>4</option></select></div>
+          <div class="fg" style="grid-column:1/-1"><label>Invoice Info</label><textarea id="s-ii"></textarea></div>
+          <div class="fg" style="grid-column:1/-1"><label>Invoice Note</label><textarea id="s-in"></textarea></div>
+        </div>
+        <button class="btn btn-p" onclick="saveS('invoice')">✅ Save</button>
+      </div>
+      <div class="sc2" id="st-social" style="display:none;">
+        <div class="ss-title">Social Links</div>
+        <div class="fg-2">
+          <div class="fg"><label>📘 Facebook</label><input type="text" id="s-fb" placeholder="https://facebook.com/..."></div>
+          <div class="fg"><label>🎵 TikTok</label><input type="text" id="s-tt" placeholder="https://tiktok.com/..."></div>
+          <div class="fg"><label>▶️ YouTube</label><input type="text" id="s-yt" placeholder="https://youtube.com/..."></div>
+          <div class="fg"><label>📸 Instagram</label><input type="text" id="s-ig" placeholder="https://instagram.com/..."></div>
+          <div class="fg"><label>💬 WhatsApp</label><input type="text" id="s-wa" placeholder="01XXXXXXXXX"></div>
+        </div>
+        <button class="btn btn-p" onclick="saveS('social')">✅ Save</button>
+      </div>
+      <div class="sc2" id="st-analytics" style="display:none;">
+        <div class="ss-title">Analytics & Pixel</div>
+        <div class="fg"><label>Facebook Pixel Code</label><textarea id="s-fbp" style="min-height:100px;" placeholder="<!-- Facebook Pixel -->"></textarea></div>
+        <div class="fg"><label>TikTok Pixel Code</label><textarea id="s-tkp" style="min-height:100px;" placeholder="<!-- TikTok Pixel -->"></textarea></div>
+        <div class="fg"><label>Google Analytics</label><textarea id="s-ga" style="min-height:80px;" placeholder="<!-- GA Code -->"></textarea></div>
+        <button class="btn btn-p" onclick="saveS('analytics')">✅ Save</button>
+      </div>
+      <div class="sc2" id="st-blacklist" style="display:none;">
+        <div class="ss-title">Blacklist</div>
+        <div class="fg"><label>IP Black List</label><textarea id="s-ibl" placeholder="43.255.20.20,103.102..."></textarea></div>
+        <div class="fg"><label>Phone Black List</label><textarea id="s-pbl" placeholder="01XXXXXXXXX,..."></textarea></div>
+        <div class="fg"><label>Single Order Mode</label><select id="s-so"><option value="inactive">Inactive</option><option value="active">Active</option></select></div>
+        <button class="btn btn-p" onclick="saveS('blacklist')">✅ Save</button>
+      </div>
+      <div class="sc2" id="st-password" style="display:none;">
+        <div class="ss-title">Change Password</div>
+        <div class="fg"><label>Current Password</label><input type="password" id="s-cp" placeholder="Current password"></div>
+        <div class="fg"><label>New Password</label><input type="password" id="s-np" placeholder="New password"></div>
+        <div class="fg"><label>Confirm Password</label><input type="password" id="s-cnp" placeholder="Confirm new password"></div>
+        <button class="btn btn-p" onclick="changePass()">✅ Change Password</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+</div><!-- /admin-panel -->
+
+<!-- ════ MODALS ════ -->
+
+<!-- Add Order -->
+<div class="mo" id="add-order-modal">
+  <div class="md" style="max-width:600px;">
+    <button class="mc" onclick="cm('add-order-modal')">✕</button>
+    <div class="md-title">➕ New Order</div>
+    <div class="fg-2">
+      <div class="fg"><label>Customer Name *</label><input type="text" id="on" placeholder="নাম"></div>
+      <div class="fg"><label>Phone *</label><input type="tel" id="op" placeholder="01XXXXXXXXX"></div>
+      <div class="fg" style="grid-column:1/-1"><label>Address *</label><textarea id="oa" placeholder="সম্পূর্ণ ঠিকানা" style="min-height:55px;"></textarea></div>
+      <div class="fg"><label>Product</label><select id="oprod"><option value="">Select Product</option></select></div>
+      <div class="fg"><label>Quantity</label><input type="number" id="oq" value="1" min="1"></div>
+      <div class="fg"><label>Courier</label><select id="ocou"><option value="">Select Courier</option></select></div>
+      <div class="fg"><label>Payment</label><select id="opay"><option>Cash On Delivery</option><option>bKash</option><option>Nagad</option><option>Rocket</option></select></div>
+      <div class="fg"><label>Status</label><select id="ost"><option>Processing</option><option>Payment Pending</option><option>On Hold</option><option>Invoiced</option><option>Delivered</option><option>Completed</option><option>Canceled</option></select></div>
+      <div class="fg"><label>Discount (৳)</label><input type="number" id="odisc" value="0"></div>
+      <div class="fg"><label>Note</label><input type="text" id="onote" placeholder="Optional"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn btn-p" onclick="saveOrder()" style="flex:1;">💾 Save</button>
+      <button class="btn btn-o" onclick="cm('add-order-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- View Order -->
+<div class="mo" id="view-order-modal">
+  <div class="md" style="max-width:520px;">
+    <button class="mc" onclick="cm('view-order-modal')">✕</button>
+    <div class="md-title" id="vo-title">Order Details</div>
+    <div id="vo-content"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+      <button class="btn btn-o btn-sm" onclick="printSingle()">🖨️ Print Invoice</button>
+      <button class="btn btn-p btn-sm" onclick="cm('view-order-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Status -->
+<div class="mo" id="edit-status-modal">
+  <div class="md" style="max-width:360px;">
+    <button class="mc" onclick="cm('edit-status-modal')">✕</button>
+    <div class="md-title">Change Status</div>
+    <div class="fg"><label>New Status</label>
+      <select id="ns"><option>Processing</option><option>Payment Pending</option><option>On Hold</option><option>Invoiced</option><option>Delivered</option><option>Completed</option><option>Canceled</option></select>
+    </div>
+    <div class="fg"><label>Courier</label><select id="es-cou"><option value="">Select Courier</option></select></div>
+    <button class="btn btn-p" onclick="updateOS()" style="width:100%;margin-top:4px;">✅ Update</button>
+  </div>
+</div>
+
+<!-- Product Modal -->
+<div class="mo" id="prod-modal">
+  <div class="md" style="max-width:600px;">
+    <button class="mc" onclick="cm('prod-modal')">✕</button>
+    <div class="md-title" id="pm-title">Add Product</div>
+    <div class="fg-2">
+      <div class="fg" style="grid-column:1/-1"><label>Product Name *</label><input type="text" id="pm-name" placeholder="Product name"></div>
+      <div class="fg"><label>Product Code</label><input type="text" id="pm-code" placeholder="Code"></div>
+      <div class="fg"><label>Category</label><select id="pm-cat"><option value="">Select Category</option></select></div>
+      <div class="fg"><label>Regular Price (৳) *</label><input type="number" id="pm-reg" placeholder="0"></div>
+      <div class="fg"><label>Sale Price (৳)</label><input type="number" id="pm-sale" placeholder="0"></div>
+      <div class="fg"><label>Status</label><select id="pm-st"><option>Active</option><option>Inactive</option></select></div>
+      <div class="fg"><label>Free Delivery</label><select id="pm-del"><option>Yes</option><option>No</option></select></div>
+      <div class="fg" style="grid-column:1/-1">
+        <label>Product Image URL <span style="color:var(--muted);font-size:11px;">(Image link paste করুন)</span></label>
+        <input type="text" id="pm-img" placeholder="https://example.com/image.jpg" oninput="previewImg(this.value)">
+        <div style="margin-top:8px;width:80px;height:80px;border-radius:8px;overflow:hidden;background:var(--surface);display:flex;align-items:center;justify-content:center;" id="img-preview-wrap">
+          <img id="img-preview" style="width:100%;height:100%;object-fit:cover;display:none;" alt="">
+          <span id="img-preview-icon" style="font-size:28px;">🖼️</span>
+        </div>
+      </div>
+      <div class="fg" style="grid-column:1/-1">
+        <label>Product Video URL <span style="color:var(--muted);font-size:11px;">(YouTube/TikTok link)</span></label>
+        <input type="text" id="pm-vid" placeholder="https://youtube.com/watch?v=... বা TikTok link">
+        <div style="margin-top:6px;font-size:11px;color:var(--muted);">💡 YouTube link দিলে customer site-এ video দেখা যাবে</div>
+      </div>
+      <div class="fg" style="grid-column:1/-1"><label>Description</label><textarea id="pm-desc" placeholder="Product description..."></textarea></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn btn-p" onclick="saveProduct()" style="flex:1;">💾 Save Product</button>
+      <button class="btn btn-o" onclick="cm('prod-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Category Modal -->
+<div class="mo" id="cat-modal">
+  <div class="md" style="max-width:360px;">
+    <button class="mc" onclick="cm('cat-modal')">✕</button>
+    <div class="md-title">Category</div>
+    <div class="fg"><label>Name *</label><input type="text" id="c-name" placeholder="Category name"></div>
+    <div class="fg"><label>Status</label><select id="c-st"><option>Active</option><option>Inactive</option></select></div>
+    <button class="btn btn-p" onclick="saveCat()" style="width:100%;margin-top:6px;">💾 Save</button>
+  </div>
+</div>
+
+<!-- Courier Modal -->
+<div class="mo" id="cou-modal">
+  <div class="md" style="max-width:360px;">
+    <button class="mc" onclick="cm('cou-modal')">✕</button>
+    <div class="md-title">Courier</div>
+    <div class="fg"><label>Name *</label><input type="text" id="cou-name" placeholder="Courier name"></div>
+    <div class="fg"><label>Charge (৳)</label><input type="number" id="cou-charge" placeholder="100"></div>
+    <div class="fg"><label>Status</label><select id="cou-st"><option>Active</option><option>Inactive</option></select></div>
+    <button class="btn btn-p" onclick="saveCourier()" style="width:100%;margin-top:6px;">💾 Save</button>
+  </div>
+</div>
+
+<!-- Banner Modal -->
+<div class="mo" id="banner-modal">
+  <div class="md" style="max-width:520px;">
+    <button class="mc" onclick="cm('banner-modal')">✕</button>
+    <div class="md-title" id="bm-title">Add Banner</div>
+    <div class="fg"><label>Banner Type</label>
+      <select id="b-type" onchange="toggleBannerType(this.value)">
+        <option value="gradient">Gradient (Color)</option>
+        <option value="image">Image URL</option>
+        <option value="video">Video (YouTube/TikTok)</option>
+      </select>
+    </div>
+    <div class="fg"><label>Title Text</label><input type="text" id="b-text" placeholder="Flash Sale চলছে!"></div>
+    <div class="fg"><label>Sub Text</label><input type="text" id="b-sub" placeholder="সেরা দামে অর্ডার করুন"></div>
+    <div id="b-gradient-wrap">
+      <div class="fg"><label>Background Gradient</label>
+        <select id="b-bg">
+          <option value="linear-gradient(135deg,#FF2D78,#FF6B2B)">🔴 Red-Orange</option>
+          <option value="linear-gradient(135deg,#7B2FFF,#00E5FF)">🟣 Purple-Cyan</option>
+          <option value="linear-gradient(135deg,#22C55E,#00E5FF)">🟢 Green-Cyan</option>
+          <option value="linear-gradient(135deg,#F59E0B,#FF2D78)">🟡 Yellow-Pink</option>
+          <option value="linear-gradient(135deg,#0F172A,#1E3A5F)">⚫ Dark Blue</option>
+          <option value="linear-gradient(135deg,#FF2D78,#7B2FFF)">💜 Pink-Purple</option>
+        </select>
+      </div>
+    </div>
+    <div id="b-image-wrap" style="display:none;">
+      <div class="fg"><label>Image URL</label><input type="text" id="b-img" placeholder="https://example.com/banner.jpg" oninput="previewBanner(this.value)"></div>
+      <div class="banner-preview" id="b-preview"><span style="font-size:28px;color:var(--muted);">🖼️</span></div>
+    </div>
+    <div id="b-video-wrap" style="display:none;">
+      <div class="fg"><label>Video URL (YouTube)</label><input type="text" id="b-vid" placeholder="https://youtube.com/watch?v=..."></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:10px;">💡 YouTube embed link দিন</div>
+    </div>
+    <div class="fg"><label>Status</label><select id="b-st"><option>Active</option><option>Inactive</option></select></div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn btn-p" onclick="saveBanner()" style="flex:1;">💾 Save Banner</button>
+      <button class="btn btn-o" onclick="cm('banner-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- User Modal -->
+<div class="mo" id="user-modal">
+  <div class="md" style="max-width:400px;">
+    <button class="mc" onclick="cm('user-modal')">✕</button>
+    <div class="md-title">User</div>
+    <div class="fg"><label>Name *</label><input type="text" id="u-name" placeholder="Name"></div>
+    <div class="fg"><label>Phone</label><input type="tel" id="u-ph" placeholder="01XXXXXXXXX"></div>
+    <div class="fg"><label>Email</label><input type="email" id="u-em" placeholder="email@example.com"></div>
+    <div class="fg"><label>Type</label><select id="u-tp"><option>Admin</option><option>Staff</option></select></div>
+    <div class="fg"><label>Status</label><select id="u-st"><option>Active</option><option>Inactive</option></select></div>
+    <button class="btn btn-p" onclick="saveUser()" style="width:100%;margin-top:6px;">💾 Save</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════
+const gd = (k,d) => { try{ return JSON.parse(localStorage.getItem(k))||d; }catch(e){ return d; } };
+const sd = (k,v) => localStorage.setItem(k, JSON.stringify(v));
+
+let orders = gd('mb_orders',[]);
+let products = gd('mb_products',[]);
+let categories = gd('mb_categories',[]);
+let couriers = gd('mb_couriers',[{id:1,name:'Pathao',charge:100,status:'Active'},{id:2,name:'RedX',charge:100,status:'Active'},{id:3,name:'Sundarban',charge:80,status:'Active'}]);
+let users = gd('mb_users',[{id:1,name:'Super Admin',phone:'',email:'admin@metrobd.com',type:'Admin',status:'Active'}]);
+let settings = gd('mb_settings',{});
+let banners = gd('mb_banners',[]);
+let adminPass = gd('mb_pass','admin123');
+
+let curOF = 'all';
+let editP=null, editC=null, editCou=null, editU=null, editB=null;
+let curEditOId = null;
+let curPrintO = null;
+
+function saveAll(){
+  sd('mb_orders',orders); sd('mb_products',products); sd('mb_categories',categories);
+  sd('mb_couriers',couriers); sd('mb_users',users); sd('mb_settings',settings);
+  sd('mb_banners',banners);
+}
+
+// ══════════════════════════════════════════
+// LOGIN
+// ══════════════════════════════════════════
+function doLogin(){
+  const u = document.getElementById('l-user').value;
+  const p = document.getElementById('l-pass').value;
+  if(u==='admin' && p===adminPass){
+    document.getElementById('login-page').style.display='none';
+    document.getElementById('admin-panel').style.display='block';
+    updateDashboard();
+    updateCourierSelects();
+  } else {
+    document.getElementById('login-err').style.display='block';
+  }
+}
+
+function doLogout(){
+  document.getElementById('admin-panel').style.display='none';
+  document.getElementById('login-page').style.display='flex';
+  document.getElementById('l-pass').value='';
+}
+
+function changePass(){
+  const cp = document.getElementById('s-cp').value;
+  const np = document.getElementById('s-np').value;
+  const cnp = document.getElementById('s-cnp').value;
+  if(cp !== adminPass){ toast('Current password ভুল','var(--red)'); return; }
+  if(np !== cnp){ toast('Passwords match করছে না','var(--red)'); return; }
+  if(np.length < 4){ toast('Password কমপক্ষে 4 character','var(--red)'); return; }
+  adminPass = np; sd('mb_pass',adminPass);
+  toast('Password changed! ✅');
+  ['s-cp','s-np','s-cnp'].forEach(id=>document.getElementById(id).value='');
+}
+
+// ══════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════
+const titles = {dashboard:'Dashboard',incomplete:'Incomplete Orders',orders:'Orders',products:'Products',categories:'Categories',couriers:'Couriers',banners:'Banner / Slider','rep-orders':'Order Report','rep-products':'Product Report','rep-courier':'Courier Report',users:'Users',settings:'Settings'};
+
+function sp(page, filter){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  const el = document.getElementById('pg-'+page);
+  if(el) el.classList.add('active');
+  document.getElementById('pg-title').textContent = titles[page]||page;
+  document.getElementById('sidebar').classList.remove('open');
+
+  if(page==='orders'){
+    curOF = filter||'all';
+    document.querySelectorAll('#o-stabs .stab').forEach(t=>t.classList.toggle('active', t.textContent.trim()===(filter==='all'?'All':filter)||(!filter&&t.textContent==='All')));
+    updateCourierSelects(); renderOrders();
+  }
+  if(page==='dashboard') updateDashboard();
+  if(page==='incomplete') renderIncomplete();
+  if(page==='products'){ populateSelects(); renderProducts(); }
+  if(page==='categories') renderCats();
+  if(page==='couriers') renderCouriers();
+  if(page==='banners') renderBanners();
+  if(page==='users') renderUsers();
+  if(page==='settings') loadSettings();
+  if(page==='rep-orders') renderRepO();
+  if(page==='rep-products') renderRepP();
+  if(page==='rep-courier') renderRepC();
+}
+
+// ══════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════
+function updateDashboard(){
+  const today = new Date().toISOString().split('T')[0];
+  const cnt = s => orders.filter(o=>s==='all'||o.status===s).length;
+  ['total','proc','pay','hold','can','comp'].forEach((id,i)=>{
+    const vals = [orders.length, cnt('Processing'), cnt('Payment Pending'), cnt('On Hold'), cnt('Canceled'), cnt('Completed')];
+    document.getElementById('d-'+id).textContent = vals[i];
+  });
+  const rev = orders.filter(o=>['Completed','Delivered'].includes(o.status)).reduce((a,o)=>a+(o.total||0),0);
+  document.getElementById('d-rev').textContent = '৳'+rev.toLocaleString();
+  document.getElementById('d-prods').textContent = products.length;
+  document.getElementById('all-badge').textContent = orders.length;
+  const inc = orders.filter(o=>!o.name||!o.address).length;
+  document.getElementById('inc-badge').textContent = inc;
+
+  const tod = orders.filter(o=>o.date===today);
+  const statuses = ['Processing','Payment Pending','On Hold','Completed','Canceled','Delivered','Invoiced'];
+  document.getElementById('today-report').innerHTML = [
+    ['Today Orders', tod.length],
+    ...statuses.map(s=>[s, tod.filter(o=>o.status===s).length])
+  ].map(([l,v])=>`<div class="tr2"><span class="tr2-l">${l}</span><span class="tr2-v">${v}</span></div>`).join('');
+
+  const recent = [...orders].reverse().slice(0,6);
+  document.getElementById('recent-tb').innerHTML = recent.length ?
+    recent.map(o=>`<tr><td style="color:var(--accent);font-size:12px">${o.invoice}</td><td style="font-size:12px">${o.name||'-'}</td><td style="color:var(--green)">৳${(o.total||0).toLocaleString()}</td><td><span class="badge ${sc(o.status)}">${o.status}</span></td></tr>`).join('') :
+    '<tr><td colspan="4"><div class="es"><div class="ei">📭</div>No orders</div></td></tr>';
+}
+
+// ══════════════════════════════════════════
+// ORDERS
+// ══════════════════════════════════════════
+function getInvNum(){
+  const pref = settings.invoice_prefix||'MB';
+  return pref + String(Date.now()).slice(-6);
+}
+
+function resetOrderForm(){
+  ['on','op','oa','onote'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('oq').value=1;
+  document.getElementById('odisc').value=0;
+  populateSelects();
+}
+
+function saveOrder(){
+  const name=document.getElementById('on').value.trim();
+  const phone=document.getElementById('op').value.trim();
+  if(!name||!phone){ toast('নাম ও ফোন দিন','var(--red)'); return; }
+  const pid = document.getElementById('oprod').value;
+  const prod = products.find(p=>p.id==pid);
+  const qty = parseInt(document.getElementById('oq').value)||1;
+  const disc = parseInt(document.getElementById('odisc').value)||0;
+  const price = prod?(prod.sale||prod.regular||0):0;
+  const total = (price*qty)-disc;
+  orders.push({id:Date.now(),invoice:getInvNum(),name,phone,address:document.getElementById('oa').value,product:prod?prod.name:'',productId:pid,qty,price,discount:disc,total,courier:document.getElementById('ocou').value,payment:document.getElementById('opay').value,status:document.getElementById('ost').value,note:document.getElementById('onote').value,date:new Date().toISOString().split('T')[0],time:new Date().toLocaleTimeString(),isNew:true});
+  saveAll(); cm('add-order-modal'); renderOrders(); updateDashboard();
+  toast('অর্ডার saved! ✅');
+}
+
+function renderOrders(){
+  const search = (document.getElementById('o-search').value||'').toLowerCase();
+  const cf = document.getElementById('o-cfilter').value;
+  const df = document.getElementById('o-dfilter').value;
+  let f = orders.filter(o=>{
+    const ms = curOF==='all'||o.status===curOF;
+    const ms2 = !search||(o.name||'').toLowerCase().includes(search)||(o.invoice||'').toLowerCase().includes(search)||(o.phone||'').includes(search);
+    const mc = !cf||o.courier===cf;
+    const md = !df||o.date===df;
+    return ms&&ms2&&mc&&md;
+  }).reverse();
+  document.getElementById('o-count').textContent = f.length;
+  const tb = document.getElementById('o-tb');
+  const em = document.getElementById('o-empty');
+  if(!f.length){ tb.innerHTML=''; em.style.display='block'; return; }
+  em.style.display='none';
+  tb.innerHTML = f.map(o=>`<tr>
+    <td><input type="checkbox" class="ocb" value="${o.id}"></td>
+    <td><div style="font-size:12px;color:var(--accent);font-weight:600">${o.invoice}</div><div style="font-size:11px;color:var(--muted)">${o.time||''}</div>${o.isNew?'<span class="badge Active" style="font-size:10px">New</span>':''}</td>
+    <td><div style="font-weight:600;font-size:13px">${o.name||'-'}</div><div style="font-size:11px;color:var(--muted)">📞 ${o.phone||'-'}</div><div style="font-size:11px;color:var(--muted)">📍 ${(o.address||'').substring(0,25)}${(o.address||'').length>25?'...':''}</div></td>
+    <td style="font-size:12px">📦 ${o.product||'-'} x${o.qty||1}</td>
+    <td style="color:var(--green);font-weight:700">৳${(o.total||0).toLocaleString()}</td>
+    <td style="font-size:12px">${o.courier||'—'}</td>
+    <td style="font-size:12px">${o.date||''}</td>
+    <td><span class="badge ${sc(o.status)}">${o.status}</span></td>
+    <td><div class="ci">
+      <button class="btn btn-o btn-sm" onclick="viewOrder(${o.id})" title="View">👁️</button>
+      <button class="btn btn-w btn-sm" onclick="openES(${o.id})" title="Status">↕️</button>
+      <button class="btn btn-d btn-sm" onclick="delOrder(${o.id})" title="Delete">🗑️</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+function filterOS(s,el){ curOF=s; document.querySelectorAll('#o-stabs .stab').forEach(t=>t.classList.remove('active')); el.classList.add('active'); renderOrders(); }
+function clearOF(){ document.getElementById('o-search').value=''; document.getElementById('o-cfilter').value=''; document.getElementById('o-dfilter').value=''; renderOrders(); }
+
+function viewOrder(id){
+  const o = orders.find(x=>x.id===id); if(!o) return;
+  curPrintO = o;
+  document.getElementById('vo-title').textContent = '📋 '+o.invoice;
+  document.getElementById('vo-content').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">CUSTOMER</div><div style="font-weight:600">${o.name}</div><div style="font-size:12px;color:var(--muted)">${o.phone}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">STATUS</div><span class="badge ${sc(o.status)}">${o.status}</span></div>
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">ADDRESS</div><div style="font-size:12px">${o.address||'-'}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">PAYMENT</div><div style="font-size:12px">${o.payment||'-'}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">COURIER</div><div style="font-size:12px">${o.courier||'—'}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">DATE</div><div style="font-size:12px">${o.date}</div></div>
+    </div>
+    <div style="background:var(--surface);border-radius:8px;padding:12px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px"><span>📦 ${o.product||'-'} x${o.qty||1}</span><span style="color:var(--green)">৳${((o.price||0)*(o.qty||1)).toLocaleString()}</span></div>
+      ${o.discount?`<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span>Discount</span><span style="color:var(--red)">-৳${o.discount}</span></div>`:''}
+      <div style="height:1px;background:var(--border);margin:8px 0"></div>
+      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px"><span>Total</span><span style="color:var(--green)">৳${(o.total||0).toLocaleString()}</span></div>
+    </div>
+    ${o.note?`<div style="font-size:12px;color:var(--muted);margin-top:10px">📝 ${o.note}</div>`:''}`;
+  om('view-order-modal');
+}
+
+function openES(id){
+  curEditOId=id; const o=orders.find(x=>x.id===id); if(!o) return;
+  document.getElementById('ns').value=o.status;
+  const sel=document.getElementById('es-cou');
+  sel.innerHTML='<option value="">Select Courier</option>'+couriers.map(c=>`<option ${o.courier===c.name?'selected':''}>${c.name}</option>`).join('');
+  om('edit-status-modal');
+}
+
+function updateOS(){
+  const o=orders.find(x=>x.id===curEditOId); if(!o) return;
+  o.status=document.getElementById('ns').value;
+  o.courier=document.getElementById('es-cou').value||o.courier;
+  saveAll(); renderOrders(); updateDashboard(); cm('edit-status-modal'); toast('Updated! ✅');
+}
+
+function delOrder(id){ if(!confirm('Delete?')) return; orders=orders.filter(o=>o.id!==id); saveAll(); renderOrders(); updateDashboard(); toast('Deleted','var(--red)'); }
+function selAll(cb){ document.querySelectorAll('.ocb').forEach(c=>c.checked=cb.checked); }
+
+function bulkStatus(){
+  const ids=[...document.querySelectorAll('.ocb:checked')].map(c=>parseInt(c.value));
+  if(!ids.length){ toast('কোনো order select করুন','var(--yellow)'); return; }
+  const s=prompt('New status: Processing / Invoiced / Delivered / Completed / Canceled');
+  if(!s) return;
+  ids.forEach(id=>{ const o=orders.find(x=>x.id===id); if(o) o.status=s; });
+  saveAll(); renderOrders(); updateDashboard(); toast(ids.length+' orders updated! ✅');
+}
+
+function exportCSV(){
+  const rows=[['Invoice','Name','Phone','Address','Product','Qty','Total','Courier','Status','Date']];
+  orders.forEach(o=>rows.push([o.invoice,o.name,o.phone,o.address,o.product,o.qty,o.total,o.courier,o.status,o.date]));
+  const csv=rows.map(r=>r.map(x=>`"${x||''}"`).join(',')).join('\n');
+  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv); a.download='orders-'+new Date().toISOString().split('T')[0]+'.csv'; a.click();
+  toast('CSV Downloaded! 📥');
+}
+
+function printInv(){
+  const ids=[...document.querySelectorAll('.ocb:checked')].map(c=>parseInt(c.value));
+  const list=ids.length?orders.filter(o=>ids.includes(o.id)):[curPrintO].filter(Boolean);
+  if(!list.length){ toast('Order select করুন','var(--yellow)'); return; }
+  printOrders(list);
+}
+
+function printSingle(){ if(curPrintO) printOrders([curPrintO]); }
+
+function printOrders(list){
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body{font-family:Arial,sans-serif;padding:10px;color:#000;}
+    .inv{max-width:380px;margin:0 auto 20px;border:1px solid #ddd;padding:16px;page-break-after:always;}
+    .hdr{text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:12px;}
+    .logo{font-size:20px;font-weight:900;}.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:13px;}
+    .total{font-weight:700;font-size:15px;border-top:2px solid #000;padding-top:8px;margin-top:4px;}
+    .ft{text-align:center;margin-top:12px;font-size:11px;color:#666;}
+  </style></head><body>
+  ${list.map(o=>`<div class="inv">
+    <div class="hdr"><div class="logo">MetroBD</div><div style="font-size:11px">${settings.sitetitle||'Premium Gadget Shop'}</div><div style="font-size:11px;color:#666">${settings.phone||''}</div></div>
+    <div class="row"><span>Invoice:</span><span><b>${o.invoice}</b></span></div>
+    <div class="row"><span>Date:</span><span>${o.date}</span></div>
+    <div class="row"><span>Customer:</span><span>${o.name}</span></div>
+    <div class="row"><span>Phone:</span><span>${o.phone}</span></div>
+    <div class="row"><span>Address:</span><span style="text-align:right;max-width:200px">${o.address||''}</span></div>
+    <div class="row"><span>Product:</span><span>${o.product} x${o.qty}</span></div>
+    <div class="row"><span>Courier:</span><span>${o.courier||'-'}</span></div>
+    <div class="row"><span>Payment:</span><span>${o.payment}</span></div>
+    ${o.discount?`<div class="row"><span>Discount:</span><span>-৳${o.discount}</span></div>`:''}
+    <div class="row total"><span>Total:</span><span>৳${(o.total||0).toLocaleString()}</span></div>
+    <div class="ft">ধন্যবাদ MetroBD-তে অর্ডার করার জন্য!</div>
+  </div>`).join('')}
+  </body></html>`);
+  w.document.close(); setTimeout(()=>w.print(),500);
+}
+
+// ══════════════════════════════════════════
+// INCOMPLETE
+// ══════════════════════════════════════════
+function renderIncomplete(search=''){
+  const inc = orders.filter(o=>(!o.name||!o.address)&&(!search||(o.phone||'').includes(search)||(o.invoice||'').includes(search))).reverse();
+  document.getElementById('inc-count').textContent = inc.length;
+  document.getElementById('inc-badge').textContent = inc.length;
+  const tb=document.getElementById('inc-tb'), em=document.getElementById('inc-empty');
+  if(!inc.length){ tb.innerHTML=''; em.style.display='block'; return; }
+  em.style.display='none';
+  tb.innerHTML=inc.map(o=>`<tr>
+    <td style="color:var(--accent)">${o.invoice}</td>
+    <td>${o.name||'<span style="color:var(--red)">Missing</span>'}<br><small>${o.phone||'-'}</small></td>
+    <td>${o.product||'-'} x${o.qty||1}</td>
+    <td style="color:var(--green)">৳${(o.total||0).toLocaleString()}</td>
+    <td style="font-size:12px">${o.date}</td>
+    <td><button class="btn btn-w btn-sm" onclick="openES(${o.id})">Edit Status</button></td>
+  </tr>`).join('');
+}
+
+// ══════════════════════════════════════════
+// PRODUCTS
+// ══════════════════════════════════════════
+function previewImg(url){
+  const img=document.getElementById('img-preview'), ic=document.getElementById('img-preview-icon');
+  if(url){ img.src=url; img.style.display='block'; ic.style.display='none'; }
+  else { img.style.display='none'; ic.style.display='block'; }
+}
+
+function resetPF(){
+  ['pm-name','pm-code','pm-img','pm-vid','pm-desc'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('pm-reg').value=''; document.getElementById('pm-sale').value='';
+  document.getElementById('pm-st').value='Active'; document.getElementById('pm-del').value='Yes';
+  previewImg(''); populateSelects();
+  document.getElementById('pm-title').textContent='Add Product';
+}
+
+function saveProduct(){
+  const name=document.getElementById('pm-name').value.trim();
+  const reg=parseFloat(document.getElementById('pm-reg').value);
+  if(!name||!reg){ toast('নাম ও দাম দিন','var(--red)'); return; }
+  const data={name,code:document.getElementById('pm-code').value,category:document.getElementById('pm-cat').value,regular:reg,sale:parseFloat(document.getElementById('pm-sale').value)||0,status:document.getElementById('pm-st').value,delivery:document.getElementById('pm-del').value,imageUrl:document.getElementById('pm-img').value,videoUrl:document.getElementById('pm-vid').value,desc:document.getElementById('pm-desc').value};
+  if(editP) Object.assign(editP,data);
+  else products.push({id:Date.now(),...data});
+  saveAll(); renderProducts(); cm('prod-modal'); toast((editP?'Updated':'Added')+' ✅'); editP=null;
+}
+
+function renderProducts(){
+  const s=(document.getElementById('p-search').value||'').toLowerCase();
+  const cf=document.getElementById('p-cfilter').value;
+  const sf=document.getElementById('p-sfilter').value;
+  let f=products.filter(p=>(!s||p.name.toLowerCase().includes(s))&&(!cf||p.category===cf)&&(!sf||p.status===sf));
+  document.getElementById('p-count').textContent=f.length;
+  const tb=document.getElementById('p-tb'), em=document.getElementById('p-empty');
+  if(!f.length){ tb.innerHTML=''; em.style.display='block'; return; }
+  em.style.display='none';
+  tb.innerHTML=f.map((p,i)=>`<tr>
+    <td style="color:var(--muted)">${i+1}</td>
+    <td><div class="thumb">${p.imageUrl?`<img src="${p.imageUrl}" onerror="this.style.display='none'">`:'📦'}</div></td>
+    <td><span style="font-weight:600">${p.name}</span><br><span style="font-size:11px;color:var(--muted)">${p.code||''}</span></td>
+    <td>${p.category?`<span class="badge Invoiced">${p.category}</span>`:'-'}</td>
+    <td style="text-decoration:line-through;color:var(--muted)">৳${p.regular}</td>
+    <td style="color:var(--green);font-weight:700">৳${p.sale||p.regular}</td>
+    <td>${p.videoUrl?'<span style="color:var(--accent)">▶ Yes</span>':'—'}</td>
+    <td><span class="badge ${p.status==='Active'?'Active':'Inactive'}">${p.status}</span></td>
+    <td><div class="ci">
+      <button class="btn btn-o btn-sm" onclick="editProduct(${p.id})">✏️</button>
+      <button class="btn btn-d btn-sm" onclick="delProduct(${p.id})">🗑️</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+function editProduct(id){
+  editP=products.find(p=>p.id===id); if(!editP) return;
+  populateSelects();
+  document.getElementById('pm-title').textContent='Edit Product';
+  document.getElementById('pm-name').value=editP.name;
+  document.getElementById('pm-code').value=editP.code||'';
+  document.getElementById('pm-cat').value=editP.category||'';
+  document.getElementById('pm-reg').value=editP.regular||'';
+  document.getElementById('pm-sale').value=editP.sale||'';
+  document.getElementById('pm-st').value=editP.status||'Active';
+  document.getElementById('pm-del').value=editP.delivery||'Yes';
+  document.getElementById('pm-img').value=editP.imageUrl||'';
+  document.getElementById('pm-vid').value=editP.videoUrl||'';
+  document.getElementById('pm-desc').value=editP.desc||'';
+  previewImg(editP.imageUrl||'');
+  om('prod-modal');
+}
+
+function delProduct(id){ if(!confirm('Delete?')) return; products=products.filter(p=>p.id!==id); saveAll(); renderProducts(); toast('Deleted','var(--red)'); }
+
+// ══════════════════════════════════════════
+// CATEGORIES
+// ══════════════════════════════════════════
+function saveCat(){
+  const name=document.getElementById('c-name').value.trim(); if(!name){ toast('নাম দিন','var(--red)'); return; }
+  if(editC) Object.assign(editC,{name,status:document.getElementById('c-st').value});
+  else categories.push({id:Date.now(),name,status:document.getElementById('c-st').value});
+  saveAll(); renderCats(); cm('cat-modal'); toast('Saved ✅'); editC=null;
+}
+
+function renderCats(){
+  document.getElementById('c-count').textContent=categories.length;
+  const tb=document.getElementById('c-tb'), em=document.getElementById('c-empty');
+  if(!categories.length){ tb.innerHTML=''; em.style.display='block'; return; }
+  em.style.display='none';
+  tb.innerHTML=categories.map((c,i)=>`<tr>
+    <td style="color:var(--muted)">${i+1}</td>
+    <td style="font-weight:600">${c.name}</td>
+    <td><span class="badge ${c.status==='Active'?'Active':'Inactive'}">${c.status}</span></td>
+    <td><div class="ci">
+      <button class="btn btn-o btn-sm" onclick="editCat(${c.id})">✏️</button>
+      <button class="btn btn-d btn-sm" onclick="delCat(${c.id})">🗑️</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+function editCat(id){ editC=categories.find(c=>c.id===id); if(!editC) return; document.getElementById('c-name').value=editC.name; document.getElementById('c-st').value=editC.status; om('cat-modal'); }
+function delCat(id){ if(!confirm('Delete?')) return; categories=categories.filter(c=>c.id!==id); saveAll(); renderCats(); toast('Deleted','var(--red)'); }
+
+// ══════════════════════════════════════════
+// COURIERS
+// ══════════════════════════════════════════
+function saveCourier(){
+  const name=document.getElementById('cou-name').value.trim(); if(!name){ toast('নাম দিন','var(--red)'); return; }
+  if(editCou) Object.assign(editCou,{name,charge:document.getElementById('cou-charge').value,status:document.getElementById('cou-st').value});
+  else couriers.push({id:Date.now(),name,charge:document.getElementById('cou-charge').value||100,status:document.getElementById('cou-st').value});
+  saveAll(); renderCouriers(); cm('cou-modal'); toast('Saved ✅'); editCou=null;
+}
+
+function renderCouriers(){
+  document.getElementById('cou-count').textContent=couriers.length;
+  const tb=document.getElementById('cou-tb'), em=document.getElementById('cou-empty');
+  if(!couriers.length){ tb.innerHTML=''; em.style.display='block'; return; }
+  em.style.display='none';
+  tb.innerHTML=couriers.map((c,i)=>`<tr>
+    <td style="color:var(--muted)">${i+1}</td>
+    <td style="font-weight:600">${c.name}</td>
+    <td>৳${c.charge}</td>
+    <td><span class="badge ${c.status==='Active'?'Active':'Inactive'}">${c.status}</span></td>
+    <td><div class="ci">
+      <button class="btn btn-o btn-sm" onclick="editCourier(${c.id})">✏️</button>
+      <button class="btn btn-d btn-sm" onclick="delCourier(${c.id})">🗑️</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+function editCourier(id){ editCou=couriers.find(c=>c.id===id); if(!editCou) return; document.getElementById('cou-name').value=editCou.name; document.getElementById('cou-charge').value=editCou.charge; document.getElementById('cou-st').value=editCou.status; om('cou-modal'); }
+function delCourier(id){ if(!confirm('Delete?')) return; couriers=couriers.filter(c=>c.id!==id); saveAll(); renderCouriers(); toast('Deleted','var(--red)'); }
+
+// ══════════════════════════════════════════
+// BANNERS
+// ══════════════════════════════════════════
+function resetBF(){
+  document.getElementById('b-type').value='gradient';
+  document.getElementById('b-text').value='';
+  document.getElementById('b-sub').value='';
+  document.getElementById('b-img').value='';
+  document.getElementById('b-vid').value='';
+  document.getElementById('b-st').value='Active';
+  toggleBannerType('gradient');
+  document.getElementById('bm-title').textContent='Add Banner';
+  document.getElementById('b-preview').innerHTML='<span style="font-size:28px;color:var(--muted);">🖼️</span>';
+}
+
+function toggleBannerType(v){
+  document.getElementById('b-gradient-wrap').style.display = v==='gradient'?'block':'none';
+  document.getElementById('b-image-wrap').style.display = v==='image'?'block':'none';
+  document.getElementById('b-video-wrap').style.display = v==='video'?'block':'none';
+}
+
+function previewBanner(url){
+  const p=document.getElementById('b-preview');
+  if(url){ p.innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">`; }
+  else p.innerHTML='<span style="font-size:28px;color:var(--muted);">🖼️</span>';
+}
+
+function saveBanner(){
+  const type=document.getElementById('b-type').value;
+  const data={type,text:document.getElementById('b-text').value,sub:document.getElementById('b-sub').value,status:document.getElementById('b-st').value};
+  if(type==='gradient') data.bg=document.getElementById('b-bg').value;
+  if(type==='image') data.url=document.getElementById('b-img').value;
+  if(type==='video') data.videoUrl=document.getElementById('b-vid').value;
+  if(editB) Object.assign(editB,data);
+  else banners.push({id:Date.now(),...data});
+  saveAll(); renderBanners(); cm('banner-modal'); toast('Banner saved! ✅'); editB=null;
+}
+
+function renderBanners(){
+  document.getElementById('b-count').textContent=banners.length;
+  const tb=document.getElementById('b-tb'), em=document.getElementById('b-empty');
+  if(!banners.length){ tb.innerHTML=''; em.style.display='block'; return; }
+  em.style.display='none';
+  tb.innerHTML=banners.map((b,i)=>`<tr>
+    <td style="color:var(--muted)">${i+1}</td>
+    <td>
+      ${b.type==='image'&&b.url?`<img src="${b.url}" style="width:80px;height:45px;object-fit:cover;border-radius:6px;">`:
+        b.type==='video'?`<div style="width:80px;height:45px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--accent)">▶ Video</div>`:
+        `<div style="width:80px;height:45px;border-radius:6px;background:${b.bg||'var(--surface)'};display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;padding:4px;text-align:center">${b.text||'Banner'}</div>`}
+    </td>
+    <td style="font-weight:600">${b.text||'—'}</td>
+    <td><span class="badge Invoiced">${b.type}</span></td>
+    <td><span class="badge ${b.status==='Active'?'Active':'Inactive'}">${b.status}</span></td>
+    <td><div class="ci">
+      <button class="btn btn-o btn-sm" onclick="editBanner(${b.id})">✏️</button>
+      <button class="btn btn-d btn-sm" onclick="delBanner(${b.id})">🗑️</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+function editBanner(id){
+  editB=banners.find(b=>b.id===id); if(!editB) return;
+  document.getElementById('bm-title').textContent='Edit Banner';
+  document.getElementById('b-type').value=editB.type;
+  document.getElementById('b-text').value=editB.text||'';
+  document.getElementById('b-sub').value=editB.sub||'';
+  document.getElementById('b-st').value=editB.status;
+  toggleBannerType(editB.type);
+  if(editB.bg) document.getElementById('b-bg').value=editB.bg;
+  if(editB.url){ document.getElementById('b-img').value=editB.url; previewBanner(editB.url); }
+  if(editB.videoUrl) document.getElementById('b-vid').value=editB.videoUrl;
+  om('banner-modal');
+}
+
+function delBanner(id){ if(!confirm('Delete?')) return; banners=banners.filter(b=>b.id!==id); saveAll(); renderBanners(); toast('Deleted','var(--red)'); }
+
+// ══════════════════════════════════════════
+// REPORTS
+// ══════════════════════════════════════════
+function renderRepO(){
+  const s=document.getElementById('rs').value, e=document.getElementById('re').value, st=document.getElementById('rss').value;
+  const f=orders.filter(o=>(!s||o.date>=s)&&(!e||o.date<=e)&&(!st||o.status===st)).reverse();
+  document.getElementById('rep-o-tb').innerHTML=f.length?f.map(o=>`<tr><td>${o.date}</td><td style="color:var(--accent)">${o.invoice}</td><td>${o.name||'-'}<br><small>${o.phone}</small></td><td>${o.product||'-'} x${o.qty||1}</td><td style="color:var(--green)">৳${(o.total||0).toLocaleString()}</td><td>${o.courier||'-'}</td><td><span class="badge ${sc(o.status)}">${o.status}</span></td></tr>`).join(''):'<tr><td colspan="7"><div class="es"><div class="ei">📋</div>No data</div></td></tr>';
+}
+
+function renderRepP(){
+  const s=document.getElementById('rps').value, e=document.getElementById('rpe').value, st=document.getElementById('rpss').value;
+  const f=orders.filter(o=>(!s||o.date>=s)&&(!e||o.date<=e)&&(!st||o.status===st)&&o.product).reverse();
+  document.getElementById('rep-p-tb').innerHTML=f.length?f.map((o,i)=>`<tr><td>${i+1}</td><td>${o.date}</td><td>${o.product}</td><td>${o.qty||1}</td></tr>`).join(''):'<tr><td colspan="4"><div class="es"><div class="ei">📦</div>No data</div></td></tr>';
+}
+
+function renderRepC(){
+  const s=document.getElementById('rcs').value, e=document.getElementById('rce').value, cf=document.getElementById('rcc').value;
+  const list=couriers.length?couriers:[{name:'Pathao'},{name:'RedX'},{name:'Sundarban'}];
+  document.getElementById('rep-c-tb').innerHTML=list.filter(c=>!cf||c.name===cf).map(c=>{
+    const os=orders.filter(o=>o.courier===c.name&&(!s||o.date>=s)&&(!e||o.date<=e));
+    return `<tr><td style="font-weight:600">${c.name}</td><td>${os.length}</td><td>${os.filter(o=>o.status==='Processing').length}</td><td>${os.filter(o=>o.status==='Completed').length}</td><td>${os.filter(o=>o.status==='Delivered').length}</td><td>${os.filter(o=>o.status==='Canceled').length}</td></tr>`;
+  }).join('')||'<tr><td colspan="6"><div class="es"><div class="ei">🚛</div>No data</div></td></tr>';
+}
+
+// ══════════════════════════════════════════
+// USERS
+// ══════════════════════════════════════════
+function resetUF(){ ['u-name','u-ph','u-em'].forEach(id=>document.getElementById(id).value=''); }
+
+function saveUser(){
+  const name=document.getElementById('u-name').value.trim(); if(!name){ toast('নাম দিন','var(--red)'); return; }
+  const data={name,phone:document.getElementById('u-ph').value,email:document.getElementById('u-em').value,type:document.getElementById('u-tp').value,status:document.getElementById('u-st').value};
+  if(editU) Object.assign(editU,data);
+  else users.push({id:Date.now(),...data});
+  saveAll(); renderUsers(); cm('user-modal'); toast('Saved ✅'); editU=null;
+}
+
+function renderUsers(){
+  document.getElementById('u-count').textContent=users.length;
+  const tb=document.getElementById('u-tb'), em=document.getElementById('u-empty');
+  if(!users.length){ tb.innerHTML=''; em.style.display='block'; return; }
+  em.style.display='none';
+  tb.innerHTML=users.map((u,i)=>`<tr>
+    <td style="color:var(--muted)">${i+1}</td>
+    <td style="font-weight:600">${u.name}</td>
+    <td style="font-size:12px">${u.phone||'-'}</td>
+    <td style="font-size:12px">${u.email||'-'}</td>
+    <td><span class="badge ${u.type==='Admin'?'Invoiced':'Processing'}">${u.type}</span></td>
+    <td><span class="badge ${u.status==='Active'?'Active':'Inactive'}">${u.status}</span></td>
+    <td><div class="ci">
+      <button class="btn btn-o btn-sm" onclick="editUser(${u.id})">✏️</button>
+      <button class="btn btn-d btn-sm" onclick="delUser(${u.id})">🗑️</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+function editUser(id){ editU=users.find(u=>u.id===id); if(!editU) return; document.getElementById('u-name').value=editU.name; document.getElementById('u-ph').value=editU.phone||''; document.getElementById('u-em').value=editU.email||''; document.getElementById('u-tp').value=editU.type; document.getElementById('u-st').value=editU.status; om('user-modal'); }
+function delUser(id){ if(!confirm('Delete?')) return; users=users.filter(u=>u.id!==id); saveAll(); renderUsers(); toast('Deleted','var(--red)'); }
+
+// ══════════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════════
+function sst(tab,el){
+  document.querySelectorAll('[id^="st-"]').forEach(t=>t.style.display='none');
+  document.getElementById('st-'+tab).style.display='block';
+  document.querySelectorAll('.sni').forEach(n=>n.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function loadSettings(){
+  const g=(id,key)=>{ const el=document.getElementById(id); if(el&&settings[key]!==undefined) el.value=settings[key]; };
+  g('s-sn','sitename'); g('s-st','sitetitle'); g('s-ph','phone'); g('s-pt','phonetext');
+  g('s-ad','address'); g('s-tb','topbar'); g('s-ty','thankyou'); g('s-fc','footer');
+  g('s-id','dhaka_inside'); g('s-idt','dhaka_inside_text'); g('s-od','dhaka_outside'); g('s-odt','dhaka_outside_text');
+  g('s-ip','invoice_prefix'); g('s-pp','invoice_perpage'); g('s-ii','invoice_info'); g('s-in','invoice_note');
+  g('s-fb','fb'); g('s-tt','tiktok'); g('s-yt','yt'); g('s-ig','ig'); g('s-wa','wa');
+  g('s-fbp','fbpixel'); g('s-tkp','tkpixel'); g('s-ga','ga');
+  g('s-ibl','ip_blacklist'); g('s-pbl','phone_blacklist'); g('s-so','single_order');
+}
+
+function saveS(tab){
+  const g=id=>{ const el=document.getElementById(id); return el?el.value:''; };
+  const map = {
+    general:{sitename:'s-sn',sitetitle:'s-st',phone:'s-ph',phonetext:'s-pt',address:'s-ad',topbar:'s-tb',thankyou:'s-ty',footer:'s-fc'},
+    delivery:{dhaka_inside:'s-id',dhaka_inside_text:'s-idt',dhaka_outside:'s-od',dhaka_outside_text:'s-odt'},
+    invoice:{invoice_prefix:'s-ip',invoice_perpage:'s-pp',invoice_info:'s-ii',invoice_note:'s-in'},
+    social:{fb:'s-fb',tiktok:'s-tt',yt:'s-yt',ig:'s-ig',wa:'s-wa'},
+    analytics:{fbpixel:'s-fbp',tkpixel:'s-tkp',ga:'s-ga'},
+    blacklist:{ip_blacklist:'s-ibl',phone_blacklist:'s-pbl',single_order:'s-so'}
+  };
+  if(map[tab]) Object.entries(map[tab]).forEach(([k,id])=>settings[k]=g(id));
+  saveAll(); toast('Settings saved! ✅');
+}
+
+// ══════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════
+function sc(s){ const m={Processing:'Processing',Completed:'Completed','Payment Pending':'Pending','On Hold':'Hold',Canceled:'Canceled',Invoiced:'Invoiced',Delivered:'Delivered'}; return m[s]||'Processing'; }
+
+function populateSelects(){
+  const ps=document.getElementById('pm-cat');
+  if(ps) ps.innerHTML='<option value="">Select Category</option>'+categories.map(c=>`<option>${c.name}</option>`).join('');
+  const pcf=document.getElementById('p-cfilter');
+  if(pcf) pcf.innerHTML='<option value="">All Categories</option>'+categories.map(c=>`<option>${c.name}</option>`).join('');
+  const op=document.getElementById('oprod');
+  if(op) op.innerHTML='<option value="">Select Product</option>'+products.map(p=>`<option value="${p.id}">${p.name} — ৳${p.sale||p.regular}</option>`).join('');
+  const oc=document.getElementById('ocou');
+  if(oc) oc.innerHTML='<option value="">Select Courier</option>'+couriers.map(c=>`<option>${c.name}</option>`).join('');
+}
+
+function updateCourierSelects(){
+  const sel=document.getElementById('o-cfilter');
+  if(sel) sel.innerHTML='<option value="">All Couriers</option>'+couriers.map(c=>`<option>${c.name}</option>`).join('');
+  const rcc=document.getElementById('rcc');
+  if(rcc) rcc.innerHTML='<option value="">All</option>'+couriers.map(c=>`<option>${c.name}</option>`).join('');
+}
+
+function om(id){ document.getElementById(id).classList.add('active'); }
+function cm(id){ document.getElementById(id).classList.remove('active'); }
+document.querySelectorAll('.mo').forEach(m=>m.addEventListener('click',function(e){ if(e.target===this) this.classList.remove('active'); }));
+
+function toast(msg,bg='var(--green)'){
+  const el=document.getElementById('toast'); el.textContent=msg; el.style.background=bg; el.style.display='block';
+  setTimeout(()=>el.style.display='none',2800);
+}
+
+// DATE
+setInterval(()=>{
+  const el=document.getElementById('tb-date');
+  if(el) el.textContent=new Date().toLocaleDateString('bn-BD',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
+},1000);
+document.getElementById('tb-date').textContent=new Date().toLocaleDateString('bn-BD',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
+
+// Default couriers save
+if(!gd('mb_couriers',null)){
+  sd('mb_couriers',couriers);
+}
+</script>
+</body>
+</html>
