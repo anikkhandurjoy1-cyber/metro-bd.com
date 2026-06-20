@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MetroBD Admin Panel</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800;900&family=Inter:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <style>
 :root{
   --primary:#E0007A;--primary2:#FF6B2B;--accent:#0095B6;
@@ -713,28 +715,74 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 // ══════════════════════════════════════════
 // DATA
 // ══════════════════════════════════════════
+// FIREBASE INIT
+// ══════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyAxKeYJ44HkX43z1i_VXtud3eT5mfiekLo",
+  authDomain: "metrobd-d3c80.firebaseapp.com",
+  projectId: "metrobd-d3c80",
+  storageBucket: "metrobd-d3c80.firebasestorage.app",
+  messagingSenderId: "917963996661",
+  appId: "1:917963996661:web:dffe0b1ebe128f56a2f4bc"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const STORE_DOC = db.collection('metrobd').doc('store');
+const IMGBB_API_KEY = "3b6c1d56d21a4c3f52beb52c55859a28";
+
+// LocalStorage fallback helpers (used only for admin password + cart-like local prefs)
 const gd = (k,d) => { try{ return JSON.parse(localStorage.getItem(k))||d; }catch(e){ return d; } };
 const sd = (k,v) => localStorage.setItem(k, JSON.stringify(v));
 
-let orders = gd('mb_orders',[]);
-let products = gd('mb_products',[]);
-let categories = gd('mb_categories',[]);
-let couriers = gd('mb_couriers',[{id:1,name:'Pathao',charge:100,status:'Active'},{id:2,name:'RedX',charge:100,status:'Active'},{id:3,name:'Sundarban',charge:80,status:'Active'}]);
-let users = gd('mb_users',[{id:1,name:'Super Admin',phone:'',email:'admin@metrobd.com',type:'Admin',status:'Active'}]);
-let settings = gd('mb_settings',{});
-let banners = gd('mb_banners',[]);
+let orders = [];
+let products = [];
+let categories = [];
+let couriers = [{id:1,name:'Pathao',charge:100,status:'Active'},{id:2,name:'RedX',charge:100,status:'Active'},{id:3,name:'Sundarban',charge:80,status:'Active'}];
+let users = [{id:1,name:'Super Admin',phone:'',email:'admin@metrobd.com',type:'Admin',status:'Active'}];
+let settings = {};
+let banners = [];
 let adminPass = gd('mb_pass','admin123');
+let dataLoaded = false;
+
+let unsubscribeStore=null;
+function startRealtimeSync(){
+  if(unsubscribeStore) return;
+  unsubscribeStore=STORE_DOC.onSnapshot(doc=>{
+    if(!doc.exists) return;
+    const d=doc.data();
+    orders=d.orders||[]; products=d.products||[]; categories=d.categories||[];
+    couriers=d.couriers&&d.couriers.length?d.couriers:couriers;
+    users=d.users&&d.users.length?d.users:users;
+    settings=d.settings||{}; banners=d.banners||[];
+    // Re-render whichever page is currently active so admin always sees fresh data
+    const active=document.querySelector('.page.active');
+    if(active){
+      const pid=active.id.replace('pg-','');
+      if(pid==='dashboard') updateDashboard();
+      else if(pid==='incomplete') renderIncomplete();
+      else if(pid==='orders') renderOrders();
+      else if(pid==='products') renderProducts();
+      else if(pid==='categories') renderCats();
+      else if(pid==='couriers') renderCouriers();
+      else if(pid==='banners') renderBanners();
+      else if(pid==='users') renderUsers();
+    }
+    updateCourierSelects();
+  }, err=>{
+    console.error('Firebase sync error:',err);
+    toast('সিঙ্ক করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)');
+  });
+}
+
+function saveAll(){
+  return STORE_DOC.set({orders,products,categories,couriers,users,settings,banners},{merge:true})
+    .catch(err=>{ console.error('Firebase save error:',err); toast('সেভ করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)'); throw err; });
+}
 
 let curOF = 'all';
 let editP=null, editC=null, editCou=null, editU=null, editB=null;
 let curEditOId = null;
 let curPrintO = null;
-
-function saveAll(){
-  sd('mb_orders',orders); sd('mb_products',products); sd('mb_categories',categories);
-  sd('mb_couriers',couriers); sd('mb_users',users); sd('mb_settings',settings);
-  sd('mb_banners',banners);
-}
 
 // ══════════════════════════════════════════
 // LOGIN
@@ -742,14 +790,34 @@ function saveAll(){
 function doLogin(){
   const u = document.getElementById('l-user').value;
   const p = document.getElementById('l-pass').value;
-  if(u==='admin' && p===adminPass){
-    document.getElementById('login-page').style.display='none';
-    document.getElementById('admin-panel').style.display='block';
-    updateDashboard();
-    updateCourierSelects();
-  } else {
-    document.getElementById('login-err').style.display='block';
-  }
+  if(u!=='admin'){ document.getElementById('login-err').style.display='block'; return; }
+  const btn=document.querySelector('.login-btn');
+  if(btn){btn.textContent='⏳ Loading...';btn.disabled=true;}
+  document.getElementById('login-err').style.display='none';
+  STORE_DOC.get().then(doc=>{
+    const d=doc.exists?doc.data():{};
+    adminPass = d.adminPass || gd('mb_pass','admin123');
+    if(p===adminPass){
+      orders=d.orders||[]; products=d.products||[]; categories=d.categories||[];
+      couriers=d.couriers&&d.couriers.length?d.couriers:couriers;
+      users=d.users&&d.users.length?d.users:users;
+      settings=d.settings||{}; banners=d.banners||[];
+      dataLoaded=true;
+      startRealtimeSync();
+      document.getElementById('login-page').style.display='none';
+      document.getElementById('admin-panel').style.display='block';
+      updateDashboard();
+      updateCourierSelects();
+      if(btn){btn.textContent='🔐 Login';btn.disabled=false;}
+    } else {
+      document.getElementById('login-err').style.display='block';
+      if(btn){btn.textContent='🔐 Login';btn.disabled=false;}
+    }
+  }).catch(err=>{
+    console.error('Firebase load error:',err);
+    toast('ইন্টারনেট চেক করুন','var(--red)');
+    if(btn){btn.textContent='🔐 Login';btn.disabled=false;}
+  });
 }
 
 function doLogout(){
@@ -765,8 +833,13 @@ function changePass(){
   if(cp !== adminPass){ toast('Current password ভুল','var(--red)'); return; }
   if(np !== cnp){ toast('Passwords match করছে না','var(--red)'); return; }
   if(np.length < 4){ toast('Password কমপক্ষে 4 character','var(--red)'); return; }
-  adminPass = np; sd('mb_pass',adminPass);
-  toast('Password changed! ✅');
+  adminPass = np;
+  STORE_DOC.set({adminPass},{merge:true}).then(()=>{
+    toast('Password changed! ✅');
+  }).catch(err=>{
+    console.error(err);
+    toast('Password change করতে সমস্যা হয়েছে','var(--red)');
+  });
   ['s-cp','s-np','s-cnp'].forEach(id=>document.getElementById(id).value='');
 }
 
@@ -1025,12 +1098,14 @@ function handleImgUpload(input){
   const file=input.files&&input.files[0];
   if(!file) return;
   if(!file.type.startsWith('image/')){ toast('শুধু ছবি ফাইল দিন','var(--red)'); return; }
+  const wrap=document.getElementById('img-preview-wrap');
+  const ic=document.getElementById('img-preview-icon');
+  if(ic){ic.style.display='block';ic.textContent='⏳';}
   const reader=new FileReader();
   reader.onload=function(e){
     const img=new Image();
     img.onload=function(){
-      // Resize/compress to keep localStorage small
-      const maxDim=700;
+      const maxDim=900;
       let w=img.width, h=img.height;
       if(w>maxDim||h>maxDim){
         if(w>h){ h=Math.round(h*maxDim/w); w=maxDim; }
@@ -1040,10 +1115,26 @@ function handleImgUpload(input){
       canvas.width=w; canvas.height=h;
       const ctx=canvas.getContext('2d');
       ctx.drawImage(img,0,0,w,h);
-      const compressed=canvas.toDataURL('image/jpeg',0.75);
-      document.getElementById('pm-img').value=compressed;
-      previewImg(compressed);
-      toast('ছবি যুক্ত হয়েছে ✅');
+      canvas.toBlob(function(blob){
+        const formData=new FormData();
+        formData.append('image',blob);
+        fetch('https://api.imgbb.com/1/upload?key='+IMGBB_API_KEY,{method:'POST',body:formData})
+          .then(res=>res.json())
+          .then(data=>{
+            if(data.success){
+              const url=data.data.url;
+              document.getElementById('pm-img').value=url;
+              previewImg(url);
+              toast('ছবি আপলোড হয়েছে ✅');
+            } else {
+              throw new Error('Upload failed');
+            }
+          }).catch(err=>{
+            console.error(err);
+            if(ic){ic.style.display='block';ic.textContent='🖼️';}
+            toast('ছবি আপলোড করতে সমস্যা হয়েছে','var(--red)');
+          });
+      },'image/jpeg',0.8);
     };
     img.src=e.target.result;
   };
@@ -1066,11 +1157,7 @@ function saveProduct(){
   const data={name,code:document.getElementById('pm-code').value,category:document.getElementById('pm-cat').value,regular:reg,sale:parseFloat(document.getElementById('pm-sale').value)||0,status:document.getElementById('pm-st').value,delivery:document.getElementById('pm-del').value,imageUrl:document.getElementById('pm-img').value,desc:document.getElementById('pm-desc').value};
   if(editP) Object.assign(editP,data);
   else products.push({id:Date.now(),...data});
-  try{
-    saveAll();
-  }catch(e){
-    toast('ছবি সাইজ বড়, ছোট ছবি দিন','var(--red)'); return;
-  }
+  saveAll();
   renderProducts(); cm('prod-modal'); toast((editP?'Updated':'Added')+' ✅'); editP=null;
 }
 
@@ -1384,11 +1471,6 @@ setInterval(()=>{
   if(el) el.textContent=new Date().toLocaleDateString('bn-BD',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
 },1000);
 document.getElementById('tb-date').textContent=new Date().toLocaleDateString('bn-BD',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
-
-// Default couriers save
-if(!gd('mb_couriers',null)){
-  sd('mb_couriers',couriers);
-}
 </script>
 </body>
 </html>
