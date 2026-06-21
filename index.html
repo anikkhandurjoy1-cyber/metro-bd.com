@@ -667,6 +667,8 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const STORE_DOC = db.collection('metrobd').doc('store');
+const PRODUCTS_COL = db.collection('metrobd_products');
+const ORDERS_COL = db.collection('metrobd_orders');
 
 // Cart stays local per-device (LocalStorage is fine for this)
 const gd=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d;}catch(e){return d;}};
@@ -989,19 +991,39 @@ function submitOrder(){
   const del=getDelCharge();
   const sub=p?(p.sale||p.regular||0)*(curQty||1):0;
   const payNames={cod:'Cash on Delivery',bkash:'bKash - 01917635134',nagad:'Nagad - 01917635134',rocket:'Rocket'};
-  const order={id:Date.now(),invoice:'MB'+String(Date.now()).slice(-6),name,phone,address,product:p?p.name:'Manual',productId:p?p.id:null,qty:curQty||1,price:p?(p.sale||p.regular||0):0,delivery:del,total:sub+del,payment:payNames[selPayType]||'COD',note:document.getElementById('o-note').value,deliveryType:delType,status:'Processing',date:new Date().toISOString().split('T')[0],time:new Date().toLocaleTimeString(),isNew:true};
+  
+  const orderData={
+    name,phone,address,
+    note:document.getElementById('o-note').value||'',
+    product:p?p.name:'Manual',
+    productId:p?p.id:null,
+    qty:curQty||1,
+    price:p?(p.sale||p.regular||0):0,
+    delivery:del,
+    total:sub+del,
+    payment:payNames[selPayType]||'COD',
+    deliveryType:delType,
+    status:'Processing',
+    date:new Date().toISOString().split('T')[0],
+    time:new Date().toLocaleTimeString(),
+    createdAt:firebase.firestore.FieldValue.serverTimestamp()
+  };
+  
   const btn=document.querySelector('.submit-btn');
   if(btn){btn.textContent='⏳ অপেক্ষা করুন...';btn.disabled=true;}
-  STORE_DOC.update({orders:firebase.firestore.FieldValue.arrayUnion(order)}).then(()=>{
-    document.getElementById('order-form-wrap').style.display='none';
-    document.getElementById('order-success').style.display='block';
-    const sp=document.getElementById('success-phone');if(sp)sp.textContent=phone;
-    curProd=null;curQty=1;
-  }).catch(err=>{
-    console.error(err);
-    showToast('অর্ডার করতে সমস্যা হয়েছে, আবার চেষ্টা করুন','#EF4444');
-    if(btn){btn.textContent='✅ অর্ডার কনফার্ম করুন';btn.disabled=false;}
-  });
+  
+  ORDERS_COL.add(orderData)
+    .then(()=>{
+      document.getElementById('order-form-wrap').style.display='none';
+      document.getElementById('order-success').style.display='block';
+      const sp=document.getElementById('success-phone');if(sp)sp.textContent=phone;
+      curProd=null;curQty=1;
+    })
+    .catch(err=>{
+      console.error(err);
+      showToast('অর্ডার করতে সমস্যা হয়েছে, আবার চেষ্টা করুন','#EF4444');
+      if(btn){btn.textContent='✅ অর্ডার কনফার্ম করুন';btn.disabled=false;}
+    });
 }
 
 // ══════════════════════════════════
@@ -1053,16 +1075,20 @@ function showToast(msg,bg='#22C55E'){const el=document.getElementById('toast');e
 // ══════════════════════════════════
 updateCart();
 
+PRODUCTS_COL.onSnapshot(snap=>{
+  products=snap.docs.map(doc=>({id:doc.id,...doc.data()}));
+  renderProducts();
+});
+
 STORE_DOC.onSnapshot(doc=>{
   if(doc.exists){
     const d=doc.data();
-    products=d.products||[];
     categories=d.categories||[];
     settings=d.settings||{};
+    banners=d.banners||[];
   }
-  applySettings();
   renderCategories();
-  renderProducts();
+  applySettings();
 }, err=>{
   console.error('Firebase sync error:',err);
   showToast('ডাটা লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
