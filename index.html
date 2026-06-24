@@ -210,6 +210,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.97);backdrop
 .pd-disc{background:var(--accent);color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;}
 .pd-delivery{display:flex;align-items:center;gap:7px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px;padding:7px 11px;margin-bottom:9px;font-size:13px;font-family:'Hind Siliguri',sans-serif;color:var(--green);}
 .pd-desc{font-size:13px;color:var(--muted);line-height:1.7;font-family:'Hind Siliguri',sans-serif;margin-bottom:11px;white-space:pre-line;}
+.pd-disclaimer{font-size:12px;color:#92400E;line-height:1.7;font-family:'Hind Siliguri',sans-serif;margin-bottom:11px;white-space:pre-line;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 12px;}
 .qty-wrap{display:flex;align-items:center;gap:9px;margin-bottom:13px;}
 .qty-lbl{font-size:13px;color:var(--muted);font-family:'Hind Siliguri';}
 .qty-btn{width:31px;height:31px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
@@ -1087,6 +1088,7 @@ function openDetail(docId){
     ${p.code?`<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Code: ${p.code}</div>`:''}
     <div class="pd-delivery">✅ Free Delivery — সারা বাংলাদেশ</div>
     ${p.desc?`<div class="pd-desc">${p.desc}</div>`:''}
+    ${settings.product_disclaimer?`<div class="pd-disclaimer">${settings.product_disclaimer}</div>`:''}
     <div class="qty-wrap">
       <span class="qty-lbl">পরিমাণ:</span>
       <button class="qty-btn" onclick="chQty(-1)">−</button>
