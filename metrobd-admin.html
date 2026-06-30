@@ -1805,10 +1805,27 @@ function renderProducts(){
     <td style="color:var(--green);font-weight:700">৳${p.sale||p.regular}</td>
     <td><span class="badge ${p.status==='Active'?'Active':'Inactive'}">${p.status}</span></td>
     <td><div class="ci">
+      <button class="btn btn-o btn-sm" onclick="copyAdLink('${p._docId}')" title="Ads-এর জন্য লিংক কপি করুন">🔗</button>
       <button class="btn btn-o btn-sm" onclick="editProduct('${p._docId}')">✏️</button>
       <button class="btn btn-d btn-sm" onclick="delProduct('${p._docId}')">🗑️</button>
     </div></td>
   </tr>`).join('');
+}
+
+// Copies a direct link to this product (e.g. https://metro-bd.com/index.html?product=DOCID)
+// so it can be pasted straight into a Facebook/Google ad — customers who click it land
+// directly on this product's detail popup instead of just the homepage.
+function copyAdLink(docId){
+  const link = 'https://metro-bd.com/index.html?product=' + docId;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(link).then(()=>{
+      toast('Ad link কপি হয়েছে ✅');
+    }).catch(()=>{
+      prompt('লিংকটি কপি করুন:', link);
+    });
+  } else {
+    prompt('লিংকটি কপি করুন:', link);
+  }
 }
 
 function editProduct(docId){
