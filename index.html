@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MetroBD — প্রিমিয়াম গ্যাজেট শপ</title>
+<link rel="preconnect" href="https://firestore.googleapis.com">
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="dns-prefetch" href="https://firestore.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Inter:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
@@ -638,6 +641,11 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+// Enable local caching (IndexedDB persistence). First visit still needs the network round-trip,
+// but every visit after this — same customer browsing more products, or coming back later —
+// loads products instantly from the local cache while Firestore syncs any changes in the
+// background. Safe to ignore failures (private browsing / multiple tabs open).
+db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
 
 // Old single-document store: still used for categories & settings (small, slow-changing data).
 const STORE_DOC = db.collection('metrobd').doc('store');
