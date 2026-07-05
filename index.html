@@ -1020,7 +1020,41 @@ function renderCategories(){
     d.onclick=function(){filterCat(c.name,this);};wrap.appendChild(d);
   });
 }
-function filterCat(cat,el){curCat=cat;document.querySelectorAll('.cat-chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');renderProducts();}
+function filterCat(cat,el){
+  curCat=cat;
+  document.querySelectorAll('.cat-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderProducts();
+  // Reflect the selected category in the URL (like the product deep-link) so a specific
+  // category page can be shared or used directly as an ad destination — e.g.
+  // metro-bd.com/?category=Combo%20Offer opens the shop with that category pre-filtered.
+  try{
+    const url=new URL(window.location.href);
+    if(url.searchParams.has('product')) url.searchParams.delete('product'); // don't mix with product deep-link
+    if(cat==='all') url.searchParams.delete('category');
+    else url.searchParams.set('category',cat);
+    history.pushState({category:cat},'',url.toString());
+  }catch(e){}
+}
+
+// If the page is loaded with ?category=NAME in the URL (e.g. from a Facebook ad pointing
+// at one specific category), automatically select that category chip once categories have
+// rendered. Falls back to "সব পণ্য" silently if the name doesn't match any active category.
+let _catDeepLinkHandled=false;
+function tryOpenDeepLinkCategory(){
+  if(_catDeepLinkHandled) return;
+  const params=new URLSearchParams(window.location.search);
+  const cat=params.get('category');
+  if(!cat) return;
+  const chips=document.querySelectorAll('.cat-chip');
+  for(const chip of chips){
+    if(chip.textContent.trim()===cat.trim()){
+      _catDeepLinkHandled=true;
+      filterCat(cat,chip);
+      break;
+    }
+  }
+}
 
 // ══════════════════════════════════
 // PRODUCTS
@@ -1457,6 +1491,7 @@ STORE_DOC.onSnapshot(doc=>{
   applySettings();
   renderCategories();
   renderCustomerBanners();
+  tryOpenDeepLinkCategory();
 }, err=>{
   console.error('Firebase settings sync error:',err);
   showToast('সেটিংস লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
