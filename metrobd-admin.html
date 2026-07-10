@@ -493,6 +493,24 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       <div class="sc2" id="st-general">
         <div class="ss-title">General Settings</div>
         <div class="fg-2">
+          <div class="fg" style="grid-column:1/-1">
+            <label>Logo</label>
+            <select id="s-lt" onchange="toggleLogoType()" style="margin-bottom:10px;">
+              <option value="text">Text Logo (Site Name থেকে বানানো হবে)</option>
+              <option value="image">Image Logo (নিজের ছবি আপলোড করুন)</option>
+            </select>
+            <div id="logo-image-wrap" style="display:none;align-items:center;gap:12px;">
+              <div id="logo-preview" style="width:64px;height:64px;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;flex-shrink:0;">
+                <span style="font-size:10px;color:var(--muted);text-align:center;">কোনো ছবি নেই</span>
+              </div>
+              <div>
+                <input type="file" accept="image/*" id="logo-file-input" style="display:none" onchange="handleLogoUpload(this)">
+                <button type="button" class="btn" onclick="document.getElementById('logo-file-input').click()">🖼️ ছবি আপলোড</button>
+                <button type="button" class="btn" style="color:var(--red);" onclick="removeLogoImage()">✕ Remove</button>
+                <div style="font-size:11px;color:var(--muted);margin-top:6px;">ছোট ও পরিষ্কার লোগো ছবি দিন (সাইট দ্রুত লোড হওয়ার জন্য ছবিটি অটো-রিসাইজ হবে)</div>
+              </div>
+            </div>
+          </div>
           <div class="fg"><label>Site Name</label><input type="text" id="s-sn" placeholder="MetroBD"></div>
           <div class="fg"><label>Site Title</label><input type="text" id="s-st" placeholder="Premium Gadget Shop"></div>
           <div class="fg"><label>Phone Number</label><input type="text" id="s-ph" placeholder="01XXXXXXXXX"></div>
@@ -2175,12 +2193,15 @@ function loadSettings(){
   g('s-fb','fb'); g('s-tt','tiktok'); g('s-yt','yt'); g('s-ig','ig'); g('s-wa','wa');
   g('s-fbp','fbpixel'); g('s-tkp','tkpixel'); g('s-ga','ga');
   g('s-ibl','ip_blacklist'); g('s-pbl','phone_blacklist'); g('s-so','single_order');
+  const lt=document.getElementById('s-lt'); if(lt) lt.value = settings.logo_type || 'text';
+  toggleLogoType();
+  renderLogoPreview();
 }
 
 function saveS(tab){
   const g=id=>{ const el=document.getElementById(id); return el?el.value:''; };
   const map = {
-    general:{sitename:'s-sn',sitetitle:'s-st',phone:'s-ph',phonetext:'s-pt',address:'s-ad',topbar:'s-tb',thankyou:'s-ty',footer:'s-fc',product_disclaimer:'s-disc'},
+    general:{sitename:'s-sn',sitetitle:'s-st',phone:'s-ph',phonetext:'s-pt',address:'s-ad',topbar:'s-tb',thankyou:'s-ty',footer:'s-fc',product_disclaimer:'s-disc',logo_type:'s-lt'},
     delivery:{dhaka_inside:'s-id',dhaka_inside_text:'s-idt',dhaka_outside:'s-od',dhaka_outside_text:'s-odt'},
     invoice:{invoice_prefix:'s-ip',invoice_perpage:'s-pp',invoice_info:'s-ii',invoice_note:'s-in'},
     social:{fb:'s-fb',tiktok:'s-tt',yt:'s-yt',ig:'s-ig',wa:'s-wa'},
@@ -2189,6 +2210,75 @@ function saveS(tab){
   };
   if(map[tab]) Object.entries(map[tab]).forEach(([k,id])=>settings[k]=g(id));
   saveAll(); toast('Settings saved! ✅');
+}
+
+// ══════════════════════════════════════════
+// LOGO — text (Site Name) or an uploaded image. Image is downsized to max 300px before
+// upload so it stays tiny and never slows down the customer site's loading.
+// ══════════════════════════════════════════
+function toggleLogoType(){
+  const t=document.getElementById('s-lt').value;
+  document.getElementById('logo-image-wrap').style.display = (t==='image') ? 'flex' : 'none';
+}
+
+function renderLogoPreview(){
+  const el=document.getElementById('logo-preview');
+  if(!el) return;
+  el.innerHTML = settings.logo_image
+    ? `<img src="${settings.logo_image}" style="width:100%;height:100%;object-fit:contain;">`
+    : '<span style="font-size:10px;color:var(--muted);text-align:center;">কোনো ছবি নেই</span>';
+}
+
+function handleLogoUpload(input){
+  const file=input.files&&input.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ toast('শুধু ছবি ফাইল দিন','var(--red)'); return; }
+  const el=document.getElementById('logo-preview');
+  if(el) el.innerHTML='<span style="font-size:20px;">⏳</span>';
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const img=new Image();
+    img.onload=function(){
+      const maxDim=300; // logos stay small — keeps the customer site loading fast
+      let w=img.width, h=img.height;
+      if(w>maxDim||h>maxDim){
+        if(w>h){ h=Math.round(h*maxDim/w); w=maxDim; }
+        else { w=Math.round(w*maxDim/h); h=maxDim; }
+      }
+      const canvas=document.createElement('canvas');
+      canvas.width=w; canvas.height=h;
+      const ctx=canvas.getContext('2d');
+      ctx.drawImage(img,0,0,w,h);
+      canvas.toBlob(function(blob){
+        const formData=new FormData();
+        formData.append('image',blob);
+        fetch('https://api.imgbb.com/1/upload?key='+IMGBB_API_KEY,{method:'POST',body:formData})
+          .then(res=>res.json())
+          .then(data=>{
+            if(data.success){
+              settings.logo_image = data.data.url;
+              renderLogoPreview();
+              saveAll();
+              toast('লোগো আপলোড হয়েছে ✅');
+            } else { throw new Error('Upload failed'); }
+          }).catch(err=>{
+            console.error(err);
+            renderLogoPreview();
+            toast('লোগো আপলোড করতে সমস্যা হয়েছে','var(--red)');
+          });
+      },'image/png',0.9);
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value='';
+}
+
+function removeLogoImage(){
+  settings.logo_image = '';
+  renderLogoPreview();
+  saveAll();
+  toast('লোগো ছবি মুছে ফেলা হয়েছে ✅');
 }
 
 // ══════════════════════════════════════════
