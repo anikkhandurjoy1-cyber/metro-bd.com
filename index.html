@@ -1000,7 +1000,41 @@ function renderCategories(){
     d.onclick=function(){filterCat(c.name,this);};wrap.appendChild(d);
   });
 }
-function filterCat(cat,el){curCat=cat;document.querySelectorAll('.cat-chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');renderProducts();}
+function filterCat(cat,el){
+  curCat=cat;
+  document.querySelectorAll('.cat-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderProducts();
+  // Reflect the selected category in the URL so a category can be linked/shared directly —
+  // e.g. metro-bd.com/index.html?category=Mobile Accessories opens straight into that category.
+  try{
+    const url=new URL(window.location.href);
+    if(cat==='all'){
+      if(url.searchParams.has('category')){
+        url.searchParams.delete('category');
+        history.pushState({},'',url.toString());
+      }
+    } else if(url.searchParams.get('category')!==cat){
+      url.searchParams.set('category',cat);
+      history.pushState({category:cat},'',url.toString());
+    }
+  }catch(e){}
+}
+
+// If the page is loaded with ?category=NAME in the URL (e.g. from a Facebook ad targeting one
+// category), select that category chip automatically once categories have loaded.
+let _catDeepLinkHandled=false;
+function tryApplyDeepLinkCategory(){
+  if(_catDeepLinkHandled) return;
+  const params=new URLSearchParams(window.location.search);
+  const cat=params.get('category');
+  if(!cat) return;
+  const chip=Array.from(document.querySelectorAll('.cat-chip')).find(c=>c.textContent.trim()===cat);
+  if(chip){
+    _catDeepLinkHandled=true;
+    filterCat(cat,chip);
+  }
+}
 
 // ══════════════════════════════════
 // PRODUCTS
@@ -1188,8 +1222,8 @@ document.addEventListener('mouseout', function(e){
 history.pushState({mbGuard:true},'',window.location.href);
 
 // Support browser/device back button: closing via back should also close the modal,
-// re-open a deep-linked product, or — if the customer is leaving with nothing
-// open — show the exit-intent offer once.
+// re-open a deep-linked product, switch to a deep-linked category, or — if the customer
+// is leaving with nothing open — show the exit-intent offer once.
 window.addEventListener('popstate',function(){
   const params=new URLSearchParams(window.location.search);
   const pid=params.get('product');
@@ -1199,6 +1233,25 @@ window.addEventListener('popstate',function(){
     return;
   }
   cm('pd-overlay');
+  const cat=params.get('category');
+  const chip=cat ? Array.from(document.querySelectorAll('.cat-chip')).find(c=>c.textContent.trim()===cat) : null;
+  if(cat && chip){
+    curCat=cat;
+    document.querySelectorAll('.cat-chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    renderProducts();
+    return;
+  }
+  if(!cat){
+    // Back to the "all products" view — make sure the "সব পণ্য" chip shows as active again.
+    const allChip=document.querySelector('.cat-chip');
+    if(allChip && curCat!=='all'){
+      curCat='all';
+      document.querySelectorAll('.cat-chip').forEach(c=>c.classList.remove('active'));
+      allChip.classList.add('active');
+      renderProducts();
+    }
+  }
   showExitOffer();
 });
 
@@ -1441,6 +1494,7 @@ STORE_DOC.onSnapshot(doc=>{
   applySettings();
   renderCategories();
   renderCustomerBanners();
+  tryApplyDeepLinkCategory();
 }, err=>{
   console.error('Firebase settings sync error:',err);
   showToast('সেটিংস লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
