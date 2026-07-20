@@ -4,9 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MetroBD — প্রিমিয়াম গ্যাজেট শপ</title>
-<link rel="preconnect" href="https://firestore.googleapis.com">
-<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
-<link rel="dns-prefetch" href="https://firestore.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Inter:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
@@ -24,9 +21,6 @@ body{background:var(--dark);color:var(--text);font-family:'Inter','Hind Siliguri
 .logo1{display:flex;align-items:center;gap:0;font-family:'Orbitron',sans-serif;font-weight:900;font-size:22px;letter-spacing:-1px;text-decoration:none;}
 .lm{color:var(--primary);}.letro{color:var(--text);}.lbd{color:var(--primary2);}
 .lslash{width:3px;height:24px;background:linear-gradient(180deg,var(--primary),var(--primary2));margin:0 2px;transform:skewX(-15deg);}
-/* Admin-uploaded image logo — kept small so it never slows the page down */
-.nav-logo-img{height:30px;width:auto;max-width:140px;object-fit:contain;display:block;}
-.footer-logo-img{height:38px;width:auto;max-width:180px;object-fit:contain;margin:0 auto 9px;display:block;}
 
 /* COUNTDOWN STRIP — slim, professional bar placed right under the banner */
 .countdown-strip{display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-wrap:wrap;}
@@ -334,24 +328,6 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:22px
 .es .ei{font-size:36px;margin-bottom:9px;}
 #toast{display:none;position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:999;background:var(--green);color:#fff;padding:8px 16px;border-radius:18px;font-weight:600;font-size:13px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.4);}
 </style>
-
-<!-- Meta Pixel Code -->
-<script>
-!function(f,b,e,v,n,t,s)
-{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-n.queue=[];t=b.createElement(e);t.async=!0;
-t.src=v;s=b.getElementsByTagName(e)[0];
-s.parentNode.insertBefore(t,s)}(window, document,'script',
-'https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', '27794591793469804');
-fbq('track', 'PageView');
-</script>
-<noscript><img height="1" width="1" style="display:none"
-src="https://www.facebook.com/tr?id=27794591793469804&ev=PageView&noscript=1"
-/></noscript>
-<!-- End Meta Pixel Code -->
 </head>
 <body>
 
@@ -360,7 +336,7 @@ src="https://www.facebook.com/tr?id=27794591793469804&ev=PageView&noscript=1"
 
 <!-- NAV -->
 <nav>
-  <a class="logo1" href="#" id="nav-logo"><span class="lm">M</span><span class="letro">etro</span><div class="lslash"></div><span class="lbd">BD</span></a>
+  <a class="logo1" href="#"><span class="lm">M</span><span class="letro">etro</span><div class="lslash"></div><span class="lbd">BD</span></a>
   <div class="nav-right">
     <div class="nav-phone">📞 <a href="tel:01410635134">01410635134</a></div>
     <div class="nav-cart" onclick="openCart()">🛒 <span class="cart-count" id="cart-count">0</span></div>
@@ -503,7 +479,7 @@ src="https://www.facebook.com/tr?id=27794591793469804&ev=PageView&noscript=1"
 </div>
 
 <footer>
-  <div class="logo1" style="display:flex;justify-content:center;margin-bottom:9px;" id="footer-logo"><span class="lm">M</span><span class="letro">etro</span><div class="lslash"></div><span class="lbd">BD</span></div>
+  <div class="logo1" style="display:flex;justify-content:center;margin-bottom:9px;"><span class="lm">M</span><span class="letro">etro</span><div class="lslash"></div><span class="lbd">BD</span></div>
   <div class="f-links">
     <a href="#" id="f-fb">📘 Facebook</a>
     <a href="#" id="f-tt">🎵 TikTok</a>
@@ -644,11 +620,12 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-// Enable local caching (IndexedDB persistence). First visit still needs the network round-trip,
-// but every visit after this — same customer browsing more products, or coming back later —
-// loads products instantly from the local cache while Firestore syncs any changes in the
-// background. Safe to ignore failures (private browsing / multiple tabs open).
-db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+// Let Firestore cache data on the device (IndexedDB). On repeat visits this lets it
+// answer from local disk instantly instead of always waiting on the network, and it
+// works quietly alongside the localStorage cache used in loadProducts() below.
+try{
+  db.enablePersistence({synchronizeTabs:true}).catch(()=>{ /* unsupported browser or multiple tabs — safe to ignore, site still works without it */ });
+}catch(e){}
 
 // Old single-document store: still used for categories & settings (small, slow-changing data).
 const STORE_DOC = db.collection('metrobd').doc('store');
@@ -926,26 +903,7 @@ function applySettings(){
   if(settings.footer) document.getElementById('f-copy').textContent=settings.footer;
   if(settings.dhaka_outside) document.getElementById('del-outside-p').textContent=settings.dhaka_outside+' টাকা';
   if(settings.dhaka_inside) document.getElementById('del-inside-p').textContent=settings.dhaka_inside+' টাকা';
-  renderLogo();
   injectTrackingPixels();
-}
-
-// LOGO — admin can switch between a text logo (uses Site Name) or an uploaded image logo.
-// The image is uploaded already resized small (see admin), so this never adds real page weight.
-function renderLogo(){
-  const navEl=document.getElementById('nav-logo'), footEl=document.getElementById('footer-logo');
-  if(!navEl && !footEl) return;
-  const useImage = settings.logo_type==='image' && settings.logo_image;
-  if(useImage){
-    const alt=(settings.sitename||'Logo');
-    if(navEl) navEl.innerHTML=`<img src="${settings.logo_image}" alt="${alt}" class="nav-logo-img" loading="eager">`;
-    if(footEl) footEl.innerHTML=`<img src="${settings.logo_image}" alt="${alt}" class="footer-logo-img" loading="lazy">`;
-  } else {
-    const name=(settings.sitename||'MetroBD').trim()||'MetroBD';
-    const html=`<span class="lm">${name.charAt(0)}</span><span class="letro">${name.slice(1)}</span>`;
-    if(navEl) navEl.innerHTML=html;
-    if(footEl) footEl.innerHTML=html;
-  }
 }
 
 // Fires a ViewContent event when a visitor opens a product's detail view, and an AddToCart
@@ -1042,41 +1000,7 @@ function renderCategories(){
     d.onclick=function(){filterCat(c.name,this);};wrap.appendChild(d);
   });
 }
-function filterCat(cat,el){
-  curCat=cat;
-  document.querySelectorAll('.cat-chip').forEach(c=>c.classList.remove('active'));
-  el.classList.add('active');
-  renderProducts();
-  // Reflect the selected category in the URL (like the product deep-link) so a specific
-  // category page can be shared or used directly as an ad destination — e.g.
-  // metro-bd.com/?category=Combo%20Offer opens the shop with that category pre-filtered.
-  try{
-    const url=new URL(window.location.href);
-    if(url.searchParams.has('product')) url.searchParams.delete('product'); // don't mix with product deep-link
-    if(cat==='all') url.searchParams.delete('category');
-    else url.searchParams.set('category',cat);
-    history.pushState({category:cat},'',url.toString());
-  }catch(e){}
-}
-
-// If the page is loaded with ?category=NAME in the URL (e.g. from a Facebook ad pointing
-// at one specific category), automatically select that category chip once categories have
-// rendered. Falls back to "সব পণ্য" silently if the name doesn't match any active category.
-let _catDeepLinkHandled=false;
-function tryOpenDeepLinkCategory(){
-  if(_catDeepLinkHandled) return;
-  const params=new URLSearchParams(window.location.search);
-  const cat=params.get('category');
-  if(!cat) return;
-  const chips=document.querySelectorAll('.cat-chip');
-  for(const chip of chips){
-    if(chip.textContent.trim()===cat.trim()){
-      _catDeepLinkHandled=true;
-      filterCat(cat,chip);
-      break;
-    }
-  }
-}
+function filterCat(cat,el){curCat=cat;document.querySelectorAll('.cat-chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');renderProducts();}
 
 // ══════════════════════════════════
 // PRODUCTS
@@ -1103,12 +1027,16 @@ function renderProducts(){
   document.getElementById('p-count-lbl').textContent=f.length+' টি পণ্য';
   if(!f.length){grid.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
-  grid.innerHTML=f.map(p=>{
+  grid.innerHTML=f.map((p,i)=>{
     const disc=p.sale&&p.regular?Math.round((1-p.sale/p.regular)*100):0;
     const mainImg = (p.images && p.images.length) ? p.images[0] : p.imageUrl;
+    // First 6 cards (roughly what's visible without scrolling) load immediately at high
+    // priority so the page feels instant; the rest stay lazy so they don't compete for
+    // bandwidth until the customer scrolls near them.
+    const imgAttrs = i<6 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"';
     return `<div class="pc" onclick="openDetail('${p._docId}')">
       <div class="pc-img"><div class="pc-img-3d">
-        ${mainImg?`<img src="${mainImg}" alt="${p.name}" loading="lazy" onerror="this.style.display='none'"><div class="pc-img-ph" style="display:none">📦</div>`:`<div class="pc-img-ph">📦</div>`}
+        ${mainImg?`<img src="${mainImg}" alt="${p.name}" ${imgAttrs} decoding="async" onerror="this.style.display='none'"><div class="pc-img-ph" style="display:none">📦</div>`:`<div class="pc-img-ph">📦</div>`}
         </div>
         ${p.videoUrl?'<div class="vid-badge">▶ Video</div>':''}
         ${disc>0?`<div class="disc-badge">-${disc}%</div>`:''}
@@ -1513,7 +1441,6 @@ STORE_DOC.onSnapshot(doc=>{
   applySettings();
   renderCategories();
   renderCustomerBanners();
-  tryOpenDeepLinkCategory();
 }, err=>{
   console.error('Firebase settings sync error:',err);
   showToast('সেটিংস লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
@@ -1526,7 +1453,21 @@ STORE_DOC.onSnapshot(doc=>{
 // connection succeeds the grid updates itself without needing a manual page refresh.
 let productsUnsub=null;
 function loadProducts(){
-  productsLoading=true; productsError=false; renderProducts();
+  // Cache-first: instantly render whatever we showed last time (from localStorage)
+  // so the customer sees products the moment the page opens, instead of staring at
+  // a spinner while Firestore fetches fresh data over the network. Firestore's
+  // real (possibly updated) data then replaces it silently a moment later.
+  try{
+    const cached = localStorage.getItem('mb_products_cache');
+    if(cached){
+      products = JSON.parse(cached);
+      productsLoading = false;
+      renderProducts();
+      renderCustomerBanners();
+      tryOpenDeepLinkProduct();
+    }
+  }catch(e){}
+  if(!products.length) { productsLoading=true; productsError=false; renderProducts(); }
   if(productsUnsub) productsUnsub(); // avoid stacking duplicate listeners if retried manually
   productsUnsub = PRODUCTS_COL.onSnapshot(snap=>{
     products = snap.docs.map(d=>({...d.data(), _docId:d.id}));
@@ -1534,11 +1475,16 @@ function loadProducts(){
     renderProducts();
     renderCustomerBanners();
     tryOpenDeepLinkProduct();
+    try{ localStorage.setItem('mb_products_cache', JSON.stringify(products)); }catch(e){}
   }, err=>{
     console.error('Firebase products load error:',err);
-    productsLoading=false; productsError=true;
-    renderProducts();
-    showToast('পণ্য লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
+    // If we already have cached products showing, a background refresh failure
+    // shouldn't wipe the page — just leave what's on screen.
+    if(!products.length){
+      productsLoading=false; productsError=true;
+      renderProducts();
+      showToast('পণ্য লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
+    }
   });
 }
 loadProducts();
