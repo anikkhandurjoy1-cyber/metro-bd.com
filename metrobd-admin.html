@@ -493,24 +493,6 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       <div class="sc2" id="st-general">
         <div class="ss-title">General Settings</div>
         <div class="fg-2">
-          <div class="fg" style="grid-column:1/-1">
-            <label>Logo</label>
-            <select id="s-lt" onchange="toggleLogoType()" style="margin-bottom:10px;">
-              <option value="text">Text Logo (Site Name থেকে বানানো হবে)</option>
-              <option value="image">Image Logo (নিজের ছবি আপলোড করুন)</option>
-            </select>
-            <div id="logo-image-wrap" style="display:none;align-items:center;gap:12px;">
-              <div id="logo-preview" style="width:64px;height:64px;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;flex-shrink:0;">
-                <span style="font-size:10px;color:var(--muted);text-align:center;">কোনো ছবি নেই</span>
-              </div>
-              <div>
-                <input type="file" accept="image/*" id="logo-file-input" style="display:none" onchange="handleLogoUpload(this)">
-                <button type="button" class="btn" onclick="document.getElementById('logo-file-input').click()">🖼️ ছবি আপলোড</button>
-                <button type="button" class="btn" style="color:var(--red);" onclick="removeLogoImage()">✕ Remove</button>
-                <div style="font-size:11px;color:var(--muted);margin-top:6px;">ছোট ও পরিষ্কার লোগো ছবি দিন (সাইট দ্রুত লোড হওয়ার জন্য ছবিটি অটো-রিসাইজ হবে)</div>
-              </div>
-            </div>
-          </div>
           <div class="fg"><label>Site Name</label><input type="text" id="s-sn" placeholder="MetroBD"></div>
           <div class="fg"><label>Site Title</label><input type="text" id="s-st" placeholder="Premium Gadget Shop"></div>
           <div class="fg"><label>Phone Number</label><input type="text" id="s-ph" placeholder="01XXXXXXXXX"></div>
@@ -806,6 +788,12 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+// Cache Firestore reads on-device so switching between tabs (Orders/Dashboard/Products) doesn't
+// always wait on a fresh network round-trip — repeat reads of the same data are served from local
+// cache instantly, then quietly refreshed in the background.
+try{
+  db.enablePersistence({synchronizeTabs:true}).catch(()=>{ /* unsupported browser or multiple admin tabs open — safe to ignore */ });
+}catch(e){}
 
 // Old single-document store: still used for categories, couriers, users, settings, banners (small data)
 const STORE_DOC = db.collection('metrobd').doc('store');
@@ -842,6 +830,7 @@ const ORDERS_PAGE_SIZE = 50;
 let orderPageCursors = [null]; // orderPageCursors[i] = the "startAfter" doc snapshot to use to load page i (0-indexed); index 0 = null (first page)
 let curOrderPage = 0;
 let lastOrderPageHasMore = false;
+let ordersPageUnsub = null; // live listener for whichever orders page is currently on screen
 
 let unsubscribeStore=null;
 let unsubscribeNewOrders=null;
@@ -877,12 +866,13 @@ function startNewOrderWatcher(){
       showNewOrderBell();
       toast('🛒 নতুন অর্ডার এসেছে! ('+(latest.name||'')+')','var(--green,#22C55E)');
       playNewOrderSound();
-      // If the admin is already looking at the Orders or Dashboard page, refresh it automatically
-      // so they don't have to click anything to see the new order while they're on that page.
+      // The Orders table (if open) already updates itself live via the onSnapshot listener in
+      // loadOrdersPage() — no need to force a reload or navigate away from wherever the admin
+      // currently is. Just clear the bell badge quietly since they can already see it.
       const active=document.querySelector('.page.active');
       const pid = active ? active.id.replace('pg-','') : '';
-      if(pid==='orders'){ loadOrdersPage(curOrderPage); ackNewOrders(); }
-      else if(pid==='dashboard'){ loadDashboard(); ackNewOrders(); }
+      if(pid==='orders'){ clearBellQuietly(); }
+      else if(pid==='dashboard'){ loadDashboard(true); clearBellQuietly(); }
     }
   }, err=>{
     console.error('New order watcher error:',err);
@@ -894,9 +884,15 @@ function showNewOrderBell(){
   document.getElementById('new-order-count').textContent = newOrderCount;
 }
 
-function ackNewOrders(){
+// Clears the bell badge WITHOUT navigating anywhere — used when the admin can already see
+// the new order (they're on the live Orders table, or the Dashboard just refreshed itself).
+function clearBellQuietly(){
   newOrderCount=0;
   document.getElementById('new-order-bell').style.display='none';
+}
+
+function ackNewOrders(){
+  clearBellQuietly();
   // Jump to Orders with a fresh load so the admin sees the new order(s) immediately.
   sp('orders','all');
 }
@@ -972,7 +968,7 @@ function doLogin(){
     const d=doc.exists?doc.data():{};
     adminPass = d.adminPass || gd('mb_pass','admin123');
     if(p===adminPass){
-      sessionStorage.setItem('mb_admin_session','1');
+      localStorage.setItem('mb_admin_session','1');
       enterAdminPanel(d);
       if(btn){btn.textContent='🔐 Login';btn.disabled=false;}
     } else {
@@ -1004,23 +1000,25 @@ function enterAdminPanel(d){
   });
 }
 
-// On page load, if this browser tab already has a valid admin session (set during a previous
-// successful login in this same tab), skip straight to the dashboard instead of showing the
-// login form again. The session is cleared on explicit Logout or when the tab/browser closes.
-if(sessionStorage.getItem('mb_admin_session')==='1'){
+// On page load, if this browser already has a valid admin session (set during a previous
+// successful login), skip straight to the dashboard instead of showing the login form again.
+// The session persists across closing/reopening the browser — it's only cleared on explicit
+// Logout, or automatically when the admin changes their password (see changePass()).
+if(localStorage.getItem('mb_admin_session')==='1'){
   STORE_DOC.get().then(doc=>{
     const d = doc.exists ? doc.data() : {};
     adminPass = d.adminPass || gd('mb_pass','admin123');
     enterAdminPanel(d);
   }).catch(err=>{
     console.error('Auto-resume session error:', err);
-    sessionStorage.removeItem('mb_admin_session'); // fall back to showing the login form
+    localStorage.removeItem('mb_admin_session'); // fall back to showing the login form
   });
 }
 
 function doLogout(){
-  sessionStorage.removeItem('mb_admin_session');
+  localStorage.removeItem('mb_admin_session');
   if(unsubscribeNewOrders){ unsubscribeNewOrders(); unsubscribeNewOrders=null; }
+  if(ordersPageUnsub){ ordersPageUnsub(); ordersPageUnsub=null; }
   lastSeenOrderTs=null; newOrderCount=0;
   document.getElementById('new-order-bell').style.display='none';
   document.getElementById('admin-panel').style.display='none';
@@ -1037,12 +1035,13 @@ function changePass(){
   if(np.length < 4){ toast('Password কমপক্ষে 4 character','var(--red)'); return; }
   adminPass = np;
   STORE_DOC.set({adminPass},{merge:true}).then(()=>{
-    toast('Password changed! ✅');
+    toast('Password changed! আবার লগইন করুন ✅');
+    ['s-cp','s-np','s-cnp'].forEach(id=>document.getElementById(id).value='');
+    setTimeout(doLogout, 900); // password changed — end the saved session so the new password is required next time
   }).catch(err=>{
     console.error(err);
     toast('Password change করতে সমস্যা হয়েছে','var(--red)');
   });
-  ['s-cp','s-np','s-cnp'].forEach(id=>document.getElementById(id).value='');
 }
 
 // ══════════════════════════════════════════
@@ -1089,11 +1088,21 @@ function loadProducts(){
 }
 
 // ══════════════════════════════════════════
-// DASHBOARD — uses a capped sample (latest 500 orders), never the full order history
+// DASHBOARD — uses a capped sample (latest 500 orders), never the full order history.
+// Cached for a short time so bouncing between tabs (Dashboard → Orders → Dashboard) doesn't
+// re-download 500 order docs every single time — a real new order still updates it (see the
+// new-order watcher above), and pulling to refresh / navigating in after a longer gap re-fetches.
 // ══════════════════════════════════════════
-function loadDashboard(){
+let dashboardLastLoadedAt = 0;
+const DASHBOARD_CACHE_MS = 60000; // 1 minute
+function loadDashboard(force){
+  if(!force && dashboardOrdersSample.length && (Date.now()-dashboardLastLoadedAt)<DASHBOARD_CACHE_MS){
+    renderDashboard();
+    return;
+  }
   ORDERS_COL.orderBy('createdAtTs','desc').limit(DASHBOARD_SAMPLE_LIMIT).get().then(snap=>{
     dashboardOrdersSample = snap.docs.map(d=>({...d.data(), _docId:d.id}));
+    dashboardLastLoadedAt = Date.now();
     renderDashboard();
   }).catch(err=>{
     console.error('Dashboard load error:',err);
@@ -1174,7 +1183,7 @@ function saveOrder(){
     cm('add-order-modal');
     toast('অর্ডার saved! ✅');
     resetOrdersPaging(); loadOrdersPage(0);
-    loadDashboard();
+    loadDashboard(true);
   }).catch(err=>{
     console.error('Save order error:',err);
     toast('সেভ করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)');
@@ -1216,7 +1225,13 @@ function loadOrdersPage(pageIndex){
   if(cursor){ q = q.startAfter(cursor); }
   const tb = document.getElementById('o-tb');
   tb.innerHTML = '<tr><td colspan="9"><div class="es">⏳ Loading...</div></td></tr>';
-  q.get().then(snap=>{
+  // Stop watching whichever page/filter was previously on screen before subscribing to the new one —
+  // otherwise old listeners would keep running in the background after navigating away.
+  if(ordersPageUnsub){ ordersPageUnsub(); ordersPageUnsub=null; }
+  // Live listener instead of a one-time get(): as soon as a new order is added (or an existing one's
+  // status changes) and it falls within this page's query, the table updates itself immediately —
+  // no manual refresh needed, and Firestore serves repeat/cached reads locally so it feels instant.
+  ordersPageUnsub = q.onSnapshot(snap=>{
     orders = snap.docs.map(d=>({...d.data(), _docId:d.id, _docRef:d.ref}));
     // When a status/date filter is active we ordered by document ID (to avoid needing a
     // composite index), so re-sort the small filtered batch by date here on the client.
@@ -1234,7 +1249,7 @@ function loadOrdersPage(pageIndex){
     if(snap.docs.length){ orderPageCursors[pageIndex+1] = snap.docs[snap.docs.length-1]; }
     renderOrders();
     updatePagerUI();
-  }).catch(err=>{
+  }, err=>{
     console.error('Load orders error:',err);
     tb.innerHTML = '';
     document.getElementById('o-empty').style.display='block';
@@ -2193,15 +2208,12 @@ function loadSettings(){
   g('s-fb','fb'); g('s-tt','tiktok'); g('s-yt','yt'); g('s-ig','ig'); g('s-wa','wa');
   g('s-fbp','fbpixel'); g('s-tkp','tkpixel'); g('s-ga','ga');
   g('s-ibl','ip_blacklist'); g('s-pbl','phone_blacklist'); g('s-so','single_order');
-  const lt=document.getElementById('s-lt'); if(lt) lt.value = settings.logo_type || 'text';
-  toggleLogoType();
-  renderLogoPreview();
 }
 
 function saveS(tab){
   const g=id=>{ const el=document.getElementById(id); return el?el.value:''; };
   const map = {
-    general:{sitename:'s-sn',sitetitle:'s-st',phone:'s-ph',phonetext:'s-pt',address:'s-ad',topbar:'s-tb',thankyou:'s-ty',footer:'s-fc',product_disclaimer:'s-disc',logo_type:'s-lt'},
+    general:{sitename:'s-sn',sitetitle:'s-st',phone:'s-ph',phonetext:'s-pt',address:'s-ad',topbar:'s-tb',thankyou:'s-ty',footer:'s-fc',product_disclaimer:'s-disc'},
     delivery:{dhaka_inside:'s-id',dhaka_inside_text:'s-idt',dhaka_outside:'s-od',dhaka_outside_text:'s-odt'},
     invoice:{invoice_prefix:'s-ip',invoice_perpage:'s-pp',invoice_info:'s-ii',invoice_note:'s-in'},
     social:{fb:'s-fb',tiktok:'s-tt',yt:'s-yt',ig:'s-ig',wa:'s-wa'},
@@ -2210,75 +2222,6 @@ function saveS(tab){
   };
   if(map[tab]) Object.entries(map[tab]).forEach(([k,id])=>settings[k]=g(id));
   saveAll(); toast('Settings saved! ✅');
-}
-
-// ══════════════════════════════════════════
-// LOGO — text (Site Name) or an uploaded image. Image is downsized to max 300px before
-// upload so it stays tiny and never slows down the customer site's loading.
-// ══════════════════════════════════════════
-function toggleLogoType(){
-  const t=document.getElementById('s-lt').value;
-  document.getElementById('logo-image-wrap').style.display = (t==='image') ? 'flex' : 'none';
-}
-
-function renderLogoPreview(){
-  const el=document.getElementById('logo-preview');
-  if(!el) return;
-  el.innerHTML = settings.logo_image
-    ? `<img src="${settings.logo_image}" style="width:100%;height:100%;object-fit:contain;">`
-    : '<span style="font-size:10px;color:var(--muted);text-align:center;">কোনো ছবি নেই</span>';
-}
-
-function handleLogoUpload(input){
-  const file=input.files&&input.files[0];
-  if(!file) return;
-  if(!file.type.startsWith('image/')){ toast('শুধু ছবি ফাইল দিন','var(--red)'); return; }
-  const el=document.getElementById('logo-preview');
-  if(el) el.innerHTML='<span style="font-size:20px;">⏳</span>';
-  const reader=new FileReader();
-  reader.onload=function(e){
-    const img=new Image();
-    img.onload=function(){
-      const maxDim=300; // logos stay small — keeps the customer site loading fast
-      let w=img.width, h=img.height;
-      if(w>maxDim||h>maxDim){
-        if(w>h){ h=Math.round(h*maxDim/w); w=maxDim; }
-        else { w=Math.round(w*maxDim/h); h=maxDim; }
-      }
-      const canvas=document.createElement('canvas');
-      canvas.width=w; canvas.height=h;
-      const ctx=canvas.getContext('2d');
-      ctx.drawImage(img,0,0,w,h);
-      canvas.toBlob(function(blob){
-        const formData=new FormData();
-        formData.append('image',blob);
-        fetch('https://api.imgbb.com/1/upload?key='+IMGBB_API_KEY,{method:'POST',body:formData})
-          .then(res=>res.json())
-          .then(data=>{
-            if(data.success){
-              settings.logo_image = data.data.url;
-              renderLogoPreview();
-              saveAll();
-              toast('লোগো আপলোড হয়েছে ✅');
-            } else { throw new Error('Upload failed'); }
-          }).catch(err=>{
-            console.error(err);
-            renderLogoPreview();
-            toast('লোগো আপলোড করতে সমস্যা হয়েছে','var(--red)');
-          });
-      },'image/png',0.9);
-    };
-    img.src=e.target.result;
-  };
-  reader.readAsDataURL(file);
-  input.value='';
-}
-
-function removeLogoImage(){
-  settings.logo_image = '';
-  renderLogoPreview();
-  saveAll();
-  toast('লোগো ছবি মুছে ফেলা হয়েছে ✅');
 }
 
 // ══════════════════════════════════════════
