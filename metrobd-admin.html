@@ -309,7 +309,6 @@ tr:hover td{background:rgba(0,0,0,0.02);}
     <div><div class="pt">Orders</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-c btn-sm" onclick="exportCSV()">📥 CSV (এই পেজ)</button>
-      <button class="btn btn-s btn-sm" onclick="om('add-order-modal');resetOrderForm()">+ New Order</button>
     </div>
   </div>
   <div class="stabs" id="o-stabs">
@@ -579,29 +578,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 
 <!-- ════ MODALS ════ -->
 
-<!-- Add Order -->
-<div class="mo" id="add-order-modal">
-  <div class="md" style="max-width:600px;">
-    <button class="mc" onclick="cm('add-order-modal')">✕</button>
-    <div class="md-title">➕ New Order</div>
-    <div class="fg-2">
-      <div class="fg"><label>Customer Name *</label><input type="text" id="on" placeholder="নাম"></div>
-      <div class="fg"><label>Phone *</label><input type="tel" id="op" placeholder="01XXXXXXXXX"></div>
-      <div class="fg" style="grid-column:1/-1"><label>Address *</label><textarea id="oa" placeholder="সম্পূর্ণ ঠিকানা" style="min-height:55px;"></textarea></div>
-      <div class="fg"><label>Product</label><select id="oprod"><option value="">Select Product</option></select></div>
-      <div class="fg"><label>Quantity</label><input type="number" id="oq" value="1" min="1"></div>
-      <div class="fg"><label>Courier</label><select id="ocou"><option value="">Select Courier</option></select></div>
-      <div class="fg"><label>Payment</label><select id="opay"><option>Cash On Delivery</option></select></div>
-      <div class="fg"><label>Status</label><select id="ost"><option>Processing</option><option>Payment Pending</option><option>On Hold</option><option>Invoiced</option><option>Delivered</option><option>Completed</option><option>Canceled</option></select></div>
-      <div class="fg"><label>Discount (৳)</label><input type="number" id="odisc" value="0"></div>
-      <div class="fg"><label>Note</label><input type="text" id="onote" placeholder="Optional"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:14px;">
-      <button class="btn btn-p" onclick="saveOrder()" style="flex:1;">💾 Save</button>
-      <button class="btn btn-o" onclick="cm('add-order-modal')">Cancel</button>
-    </div>
-  </div>
-</div>
+
 
 <!-- View Order -->
 <div class="mo" id="view-order-modal">
@@ -802,7 +779,10 @@ const STORE_DOC = db.collection('metrobd').doc('store');
 const ORDERS_COL = db.collection('metrobd_orders');
 const PRODUCTS_COL = db.collection('metrobd_products');
 
-const IMGBB_API_KEY = "3b6c1d56d21a4c3f52beb52c55859a28";
+// Cloudinary (unsigned upload) — used for all product & banner image uploads.
+const CLOUDINARY_CLOUD_NAME = "jqkplosf";
+const CLOUDINARY_UPLOAD_PRESET = "metrobd-product";
+const CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD_NAME+"/image/upload";
 
 // LocalStorage fallback helpers (used only for admin password + cart-like local prefs)
 const gd = (k,d) => { try{ return JSON.parse(localStorage.getItem(k))||d; }catch(e){ return d; } };
@@ -1151,44 +1131,7 @@ function getInvNum(){
   return pref + String(Date.now()).slice(-6);
 }
 
-function resetOrderForm(){
-  ['on','op','oa','onote'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('oq').value=1;
-  document.getElementById('odisc').value=0;
-  populateSelects();
-}
 
-function saveOrder(){
-  const name=document.getElementById('on').value.trim();
-  const phone=document.getElementById('op').value.trim();
-  if(!name||!phone){ toast('নাম ও ফোন দিন','var(--red)'); return; }
-  const pid = document.getElementById('oprod').value;
-  const prod = products.find(p=>p.id==pid);
-  const qty = parseInt(document.getElementById('oq').value)||1;
-  const disc = parseInt(document.getElementById('odisc').value)||0;
-  const price = prod?(prod.sale||prod.regular||0):0;
-  const total = (price*qty)-disc;
-  const now = new Date();
-  const mainImg = prod ? ((prod.images && prod.images.length) ? prod.images[0] : (prod.imageUrl||'')) : '';
-  const newOrder = {
-    id:Date.now(),invoice:getInvNum(),name,phone,address:document.getElementById('oa').value,
-    product:prod?prod.name:'',productId:pid,productImage:mainImg,qty,price,discount:disc,total,
-    courier:document.getElementById('ocou').value,payment:document.getElementById('opay').value,
-    status:document.getElementById('ost').value,note:document.getElementById('onote').value,
-    date:now.toISOString().split('T')[0],time:now.toLocaleTimeString(),
-    createdAtTs:firebase.firestore.Timestamp.now(),
-    isNew:true
-  };
-  ORDERS_COL.add(newOrder).then(()=>{
-    cm('add-order-modal');
-    toast('অর্ডার saved! ✅');
-    resetOrdersPaging(); loadOrdersPage(0);
-    loadDashboard(true);
-  }).catch(err=>{
-    console.error('Save order error:',err);
-    toast('সেভ করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)');
-  });
-}
 
 // Build a Firestore query based on current filters (status tab + courier + date)
 // Builds the Firestore query for the Orders page. IMPORTANT: Firestore requires a composite
@@ -1713,12 +1656,13 @@ function handleImgUpload(input,slotIdx){
       ctx.drawImage(img,0,0,w,h);
       canvas.toBlob(function(blob){
         const formData=new FormData();
-        formData.append('image',blob);
-        fetch('https://api.imgbb.com/1/upload?key='+IMGBB_API_KEY,{method:'POST',body:formData})
+        formData.append('file',blob);
+        formData.append('upload_preset',CLOUDINARY_UPLOAD_PRESET);
+        fetch(CLOUDINARY_UPLOAD_URL,{method:'POST',body:formData})
           .then(res=>res.json())
           .then(data=>{
-            if(data.success){
-              pmImages[slotIdx] = data.data.url;
+            if(data.secure_url){
+              pmImages[slotIdx] = data.secure_url;
               renderImgSlots();
               toast('ছবি আপলোড হয়েছে ✅');
             } else {
@@ -2018,12 +1962,13 @@ function handleBannerImgUpload(input,slotIdx){
       ctx.drawImage(img,0,0,w,h);
       canvas.toBlob(function(blob){
         const formData=new FormData();
-        formData.append('image',blob);
-        fetch('https://api.imgbb.com/1/upload?key='+IMGBB_API_KEY,{method:'POST',body:formData})
+        formData.append('file',blob);
+        formData.append('upload_preset',CLOUDINARY_UPLOAD_PRESET);
+        fetch(CLOUDINARY_UPLOAD_URL,{method:'POST',body:formData})
           .then(res=>res.json())
           .then(data=>{
-            if(data.success){
-              bImages[slotIdx] = data.data.url;
+            if(data.secure_url){
+              bImages[slotIdx] = data.secure_url;
               renderBannerImgSlots();
               toast('ছবি আপলোড হয়েছে ✅');
             } else { throw new Error('Upload failed'); }
