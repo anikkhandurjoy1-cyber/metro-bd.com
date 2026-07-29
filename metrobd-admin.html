@@ -569,6 +569,15 @@ tr:hover td{background:rgba(0,0,0,0.02);}
         </div>
         <button class="btn btn-p" onclick="runMigration()" id="migrate-btn">🚀 Migration শুরু করুন</button>
         <div id="migration-log" style="margin-top:14px;font-size:12px;font-family:monospace;background:var(--surface);border-radius:8px;padding:12px;display:none;max-height:300px;overflow-y:auto;white-space:pre-wrap;"></div>
+        <div class="divider"></div>
+        <div class="ss-title" style="border-bottom:none;margin-bottom:6px;padding-bottom:0;">🖼️ Image Migration (ImgBB → Cloudinary)</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:14px;font-family:'Hind Siliguri';">
+          পুরনো ImgBB-তে রাখা প্রোডাক্ট ও ব্যানার ছবিগুলো Cloudinary-তে কপি করে লিংক আপডেট করবে।<br><br>
+          ✅ <b>নিরাপদ</b> — ImgBB-র ছবি ডিলিট হবে না, শুধু নতুন Cloudinary লিংক বসবে।<br>
+          ✅ কোনো ছবি ফেইল করলে পুরনো লিংকই থাকবে — আবার বাটন চাপলে শুধু বাকিগুলো আবার চেষ্টা হবে।
+        </div>
+        <button class="btn btn-p" onclick="runImageMigration()" id="migrate-img-btn">🖼️ Image Migration শুরু করুন</button>
+        <div id="img-migration-log" style="margin-top:14px;font-size:12px;font-family:monospace;background:var(--surface);border-radius:8px;padding:12px;display:none;max-height:300px;overflow-y:auto;white-space:pre-wrap;"></div>
       </div>
     </div>
   </div>
@@ -2321,6 +2330,129 @@ function runMigration(){
     migLog('❌ Error: ' + err.message);
     btn.disabled=false; btn.textContent='🚀 আবার চেষ্টা করুন';
   });
+}
+
+// ══════════════════════════════════════════
+// IMAGE MIGRATION (ImgBB → Cloudinary)
+// Copies every product/banner image still hosted on ImgBB over to Cloudinary using
+// Cloudinary's remote-URL upload (the unsigned preset accepts an https URL as `file`,
+// so the image never has to pass through this browser). Failed images keep their old
+// ImgBB link, so re-running the button retries only what's still on ImgBB.
+// ══════════════════════════════════════════
+function imgMigLog(msg){
+  const el = document.getElementById('img-migration-log');
+  el.style.display = 'block';
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function isImgbbUrl(u){
+  return typeof u === 'string' && (u.includes('ibb.co') || u.includes('imgbb.com'));
+}
+
+function cloudinaryFetchRemote(url){
+  const fd = new FormData();
+  fd.append('file', url); // remote https URL — Cloudinary fetches it server-side
+  fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  return fetch(CLOUDINARY_UPLOAD_URL, {method:'POST', body:fd})
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.secure_url) return d.secure_url;
+      throw new Error((d.error && d.error.message) ? d.error.message : 'Upload failed');
+    });
+}
+
+async function runImageMigration(){
+  const btn = document.getElementById('migrate-img-btn');
+  const el = document.getElementById('img-migration-log');
+  el.textContent = '';
+  el.style.display = 'block';
+  btn.disabled = true;
+  btn.textContent = '⏳ Image Migration চলছে...';
+
+  try{
+    if(!products.length){ imgMigLog('🔍 প্রোডাক্ট লোড করা হচ্ছে...'); await loadProducts(); }
+    imgMigLog('🔍 ImgBB ছবি খোঁজা হচ্ছে ('+products.length+' টা প্রোডাক্ট)...');
+
+    let prodTouched = 0, prodSaved = 0, imgOk = 0, imgFail = 0;
+
+    // ── Products (one at a time — gentle on Cloudinary/ImgBB, easy to follow in the log) ──
+    for(const p of products){
+      const urls = (p.images && p.images.length) ? [...p.images] : (p.imageUrl ? [p.imageUrl] : []);
+      if(!urls.some(isImgbbUrl)) continue;
+      prodTouched++;
+      imgMigLog('📦 ' + p.name);
+      const newUrls = [];
+      let changed = false, anyFail = false;
+      for(const u of urls){
+        if(isImgbbUrl(u)){
+          try{
+            const nu = await cloudinaryFetchRemote(u);
+            newUrls.push(nu); changed = true; imgOk++;
+            imgMigLog('   ✅ ছবি Cloudinary-তে কপি হয়েছে');
+          }catch(err){
+            newUrls.push(u); anyFail = true; imgFail++;
+            imgMigLog('   ❌ ছবি ফেইল: ' + err.message + ' (পুরনো লিংকই থাকল)');
+          }
+        } else {
+          newUrls.push(u);
+        }
+      }
+      if(changed){
+        try{
+          await PRODUCTS_COL.doc(p._docId).set({images:newUrls, imageUrl:newUrls[0]||''},{merge:true});
+          p.images = newUrls; p.imageUrl = newUrls[0]||'';
+          prodSaved++;
+          imgMigLog('   💾 প্রোডাক্ট আপডেট হয়েছে' + (anyFail ? ' (কিছু ছবি এখনও ImgBB-তে)' : ''));
+        }catch(err){
+          imgMigLog('   ❌ প্রোডাক্ট সেভ ফেইল: ' + err.message);
+        }
+      }
+    }
+
+    // ── Banners (stored in STORE_DOC, saved once at the end) ──
+    let bannersChanged = false;
+    for(const b of banners){
+      if(b.type !== 'image') continue;
+      const urls = (b.images && b.images.length) ? [...b.images] : (b.url ? [b.url] : []);
+      if(!urls.some(isImgbbUrl)) continue;
+      imgMigLog('🖼️ Banner: ' + (b.text || '(নাম নেই)'));
+      const newUrls = [];
+      for(const u of urls){
+        if(isImgbbUrl(u)){
+          try{
+            const nu = await cloudinaryFetchRemote(u);
+            newUrls.push(nu); imgOk++; bannersChanged = true;
+            imgMigLog('   ✅ ছবি Cloudinary-তে কপি হয়েছে');
+          }catch(err){
+            newUrls.push(u); imgFail++;
+            imgMigLog('   ❌ ছবি ফেইল: ' + err.message + ' (পুরনো লিংকই থাকল)');
+          }
+        } else {
+          newUrls.push(u);
+        }
+      }
+      b.images = newUrls;
+      b.url = newUrls[0] || '';
+    }
+    if(bannersChanged){
+      try{ await saveAll(); imgMigLog('💾 Banner গুলো আপডেট হয়েছে'); }
+      catch(err){ imgMigLog('❌ Banner সেভ ফেইল: ' + err.message); }
+    }
+
+    if(!prodTouched && !bannersChanged){
+      imgMigLog('✅ কোনো ImgBB ছবি পাওয়া যায়নি — সব ছবি already Cloudinary-তে (বা অন্য জায়গায়) আছে।');
+    } else {
+      imgMigLog('');
+      imgMigLog('🎉 শেষ! ' + prodSaved + ' টা প্রোডাক্ট আপডেট, ' + imgOk + ' টা ছবি কপি হয়েছে, ' + imgFail + ' টা ফেইল।');
+      if(imgFail) imgMigLog('👉 আবার বাটন চাপলে শুধু ফেইল হওয়া ImgBB ছবিগুলোই আবার চেষ্টা হবে।');
+      imgMigLog('👉 Customer site খুলে ছবিগুলো ঠিকমতো দেখাচ্ছে কিনা চেক করুন।');
+    }
+  }catch(err){
+    imgMigLog('❌ Error: ' + err.message);
+  }
+  btn.disabled = false;
+  btn.textContent = '🖼️ Image Migration শুরু করুন';
 }
 
 // ══════════════════════════════════════════
