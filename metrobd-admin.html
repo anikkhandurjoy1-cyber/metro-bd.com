@@ -93,6 +93,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 .Delivered{background:rgba(34,197,94,0.15);color:#4ADE80;}
 .Active{background:rgba(34,197,94,0.15);color:#4ADE80;}
 .Inactive{background:rgba(239,68,68,0.15);color:#F87171;}
+.old-cust{background:rgba(245,158,11,0.15);color:#B45309;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;display:inline-flex;align-items:center;gap:3px;}
 
 /* BUTTONS */
 .btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all 0.15s;font-family:'Inter',sans-serif;}
@@ -818,6 +819,45 @@ let lastSeenOrderTs=null;   // createdAtTs (ms) of the most recent order the adm
 let newOrderCount=0;        // how many orders have arrived since last acknowledged
 let newOrderSound=null;
 
+// ══════════════════════════════════════════
+// OLD CUSTOMER DETECTION
+// phone → how many REAL orders (Incomplete drafts excluded) exist for that phone number.
+// Filled in asynchronously after each Orders page loads (one small query per unique phone,
+// cached for the whole session so a phone is only ever looked up once). A count of 2+ means
+// this customer has ordered before → they get a "পুরাতন কাস্টমার" badge in the table & modal.
+// ══════════════════════════════════════════
+let phoneOrderCountCache = {};
+
+function getPhoneCount(phone){
+  return phoneOrderCountCache[(phone||'').trim()] || 0;
+}
+
+function annotateOldCustomers(){
+  const phones = [...new Set(
+    orders.concat(incompleteOrdersCache)
+      .map(o=>(o.phone||'').trim())
+      .filter(p=>p && p!=='-')
+  )];
+  const toFetch = phones.filter(p=>phoneOrderCountCache[p]===undefined);
+  if(!toFetch.length) return;
+  Promise.all(toFetch.map(p=>
+    ORDERS_COL.where('phone','==',p).limit(10).get()
+      .then(snap=>{ phoneOrderCountCache[p] = snap.docs.filter(d=>d.data().status!=='Incomplete').length; })
+      .catch(()=>{ phoneOrderCountCache[p] = null; })
+  )).then(()=>{
+    // Re-render whichever order table is currently on screen so the badges appear.
+    const active=document.querySelector('.page.active');
+    const pid = active ? active.id.replace('pg-','') : '';
+    if(pid==='incomplete') renderIncomplete();
+    else if(pid==='orders') renderOrders();
+  });
+}
+
+function oldCustBadge(phone){
+  const n = getPhoneCount(phone);
+  return n>1 ? ` <span class="old-cust" title="এই নম্বর দিয়ে মোট ${n} টা অর্ডার আছে">🔁 পুরাতন (${n})</span>` : '';
+}
+
 // Lightweight realtime watcher: listens ONLY to the single most-recent order document (cheap —
 // 1 doc read per change, not the whole orders collection) so the admin sees new customer orders
 // pop up live without needing to keep re-fetching/paginating the full Orders list.
@@ -827,6 +867,9 @@ function startNewOrderWatcher(){
     if(snap.empty) return;
     const latest = snap.docs[0].data();
     const latestTs = latest.createdAtTs && latest.createdAtTs.toMillis ? latest.createdAtTs.toMillis() : 0;
+    // A brand-new order means this phone's cached order-count is now stale — clear it so the
+    // old-customer badge recalculates correctly the next time the Orders page renders.
+    if(latest.phone){ delete phoneOrderCountCache[(latest.phone||'').trim()]; }
     if(lastSeenOrderTs===null){
       // First load after login/refresh: just record the current latest order, don't alert
       // for orders that already existed before this admin session started.
@@ -1192,6 +1235,9 @@ function loadOrdersPage(pageIndex){
     if(snap.docs.length){ orderPageCursors[pageIndex+1] = snap.docs[snap.docs.length-1]; }
     renderOrders();
     updatePagerUI();
+    // Look up which of these customers have ordered before (cached, async — badges appear
+    // a moment later without blocking the table render).
+    annotateOldCustomers();
   }, err=>{
     console.error('Load orders error:',err);
     tb.innerHTML = '';
@@ -1228,7 +1274,7 @@ function renderOrders(){
   tb.innerHTML = f.map(o=>`<tr>
     <td><input type="checkbox" class="ocb" value="${o._docId}"></td>
     <td><div style="font-size:12px;color:var(--accent);font-weight:600">${o.invoice}</div><div style="font-size:11px;color:var(--muted)">${o.time||''}</div>${o.isNew?'<span class="badge Active" style="font-size:10px">New</span>':''}</td>
-    <td><div style="font-weight:600;font-size:13px">${o.name||'-'}</div><div style="font-size:11px;color:var(--muted)">📞 ${o.phone||'-'}</div><div style="font-size:11px;color:var(--muted)">📍 ${(o.address||'').substring(0,25)}${(o.address||'').length>25?'...':''}</div></td>
+    <td><div style="font-weight:600;font-size:13px">${o.name||'-'}${oldCustBadge(o.phone)}</div><div style="font-size:11px;color:var(--muted)">📞 ${o.phone||'-'}</div><div style="font-size:11px;color:var(--muted);max-width:240px;white-space:normal;word-break:break-word;line-height:1.5;">📍 ${o.address||'-'}</div></td>
     <td style="font-size:12px"><div style="display:flex;align-items:center;gap:6px;">
       <div style="width:28px;height:28px;border-radius:5px;overflow:hidden;background:var(--surface);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;">
         ${o.productImage?`<img src="${o.productImage}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">`:'📦'}
@@ -1260,7 +1306,7 @@ function viewOrder(docId){
   document.getElementById('vo-title').textContent = '📋 '+o.invoice;
   document.getElementById('vo-content').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-      <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">CUSTOMER</div><div style="font-weight:600">${o.name}</div><div style="font-size:12px;color:var(--muted)">${o.phone}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">CUSTOMER</div><div style="font-weight:600">${o.name}${oldCustBadge(o.phone)}</div><div style="font-size:12px;color:var(--muted)">${o.phone}</div></div>
       <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">STATUS</div><span class="badge ${sc(o.status)}">${o.status}</span></div>
       <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">ADDRESS</div><div style="font-size:12px">${o.address||'-'}${o.city?`<br>${o.city}${o.zone?', '+o.zone:''}`:''}</div></div>
       <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">PAYMENT</div><div style="font-size:12px">${o.payment||'-'}</div></div>
@@ -1571,6 +1617,8 @@ function loadIncomplete(){
       return bt-at;
     });
     renderIncomplete();
+    // Badge lookup: which of these draft customers have real orders before (i.e. old customers)
+    annotateOldCustomers();
   }).catch(err=>{
     console.error('Load incomplete error:',err);
     toast('লোড করতে সমস্যা','var(--red)');
@@ -1585,7 +1633,7 @@ function renderIncomplete(search=''){
   em.style.display='none';
   tb.innerHTML=inc.map(o=>`<tr>
     <td style="color:var(--accent)">${o.invoice}</td>
-    <td>${(o.name&&o.name!=='(নাম নেই)')?o.name:'<span style="color:var(--red)">নাম দেওয়া হয়নি</span>'}<br><small>${o.phone||'<span style="color:var(--red)">ফোন নেই</span>'}</small></td>
+    <td>${(o.name&&o.name!=='(নাম নেই)')?o.name:'<span style="color:var(--red)">নাম দেওয়া হয়নি</span>'}${oldCustBadge(o.phone)}<br><small>${o.phone||'<span style="color:var(--red)">ফোন নেই</span>'}</small><br><small style="color:var(--muted);white-space:normal;word-break:break-word;">📍 ${o.address||'-'}</small></td>
     <td>${o.product||'-'} x${o.qty||1}</td>
     <td style="color:var(--green)">৳${(o.total||0).toLocaleString()}</td>
     <td style="font-size:12px">${o.date}</td>
