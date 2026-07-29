@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MetroBD — প্রিমিয়াম গ্যাজেট শপ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://res.cloudinary.com">
+<link rel="preconnect" href="https://firestore.googleapis.com">
+<link rel="preconnect" href="https://www.gstatic.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Inter:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
@@ -657,6 +662,16 @@ const ORDERS_COL = db.collection('metrobd_orders');
 // Cart stays local per-device (LocalStorage is fine for this)
 const gd=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d;}catch(e){return d;}};
 const sd=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+
+// Cloudinary URL optimizer: inserts f_auto,q_auto,w_<width> into a Cloudinary URL so the CDN
+// serves a right-sized, modern-format (WebP/AVIF) version instead of the full-size original —
+// thumbnails become 5-10x smaller, which is the single biggest speed win on mobile data.
+// Non-Cloudinary URLs pass through untouched.
+function cld(url,w){
+  if(typeof url!=='string' || !url.includes('res.cloudinary.com') || !url.includes('/upload/')) return url;
+  if(url.includes('/upload/f_auto')) return url; // already optimized
+  return url.replace('/upload/','/upload/f_auto,q_auto'+(w?',w_'+w:'')+'/');
+}
 let products=[], categories=[], settings={}, banners=[];
 let productsLoading=true, productsError=false;
 let cart=gd('mb_cart',[]);
@@ -759,12 +774,12 @@ function renderCustomerBanners(){
     const imgs = (b.images && b.images.length) ? b.images : (b.url ? [b.url] : []);
     if(b.type==='image' && imgs.length){
       if(imgs.length===1){
-        bg = `background-image:url('${imgs[0]}');background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#0d0d14;`;
+        bg = `background-image:url('${cld(imgs[0],1200)}');background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#0d0d14;`;
       } else {
         // Multiple images on this one banner: render them as stacked layers that cross-fade
         // into each other automatically — a small slideshow living inside a single slide.
         mediaHtml = `<div class="banner-mini-slideshow" data-imgcount="${imgs.length}">
-          ${imgs.map((url,j)=>`<div class="bms-layer${j===0?' active':''}" style="background-image:url('${url}');"></div>`).join('')}
+          ${imgs.map((url,j)=>`<div class="bms-layer${j===0?' active':''}" style="background-image:url('${cld(url,1200)}');"></div>`).join('')}
         </div>`;
       }
     } else if(b.type==='video' && b.videoUrl){
@@ -858,7 +873,7 @@ function renderTunnelCards(images){
     return `<div class="tunnel-card" style="
       width:${pos.size}px;height:${Math.round(pos.size*0.72)}px;
       top:${pos.top}; ${sideStyle}
-      background-image:url('${url}');
+      background-image:url('${cld(url,200)}');
       animation-delay:${delay}s;
     "></div>`;
   }).join('');
@@ -1090,7 +1105,7 @@ function renderProducts(){
     const imgAttrs = i<6 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"';
     return `<div class="pc" onclick="openDetail('${p._docId}')">
       <div class="pc-img"><div class="pc-img-3d">
-        ${mainImg?`<img src="${mainImg}" alt="${p.name}" ${imgAttrs} decoding="async" onerror="this.style.display='none'"><div class="pc-img-ph" style="display:none">📦</div>`:`<div class="pc-img-ph">📦</div>`}
+        ${mainImg?`<img src="${cld(mainImg,400)}" alt="${p.name}" ${imgAttrs} decoding="async" onerror="this.style.display='none'"><div class="pc-img-ph" style="display:none">📦</div>`:`<div class="pc-img-ph">📦</div>`}
         </div>
         ${p.videoUrl?'<div class="vid-badge">▶ Video</div>':''}
         ${disc>0?`<div class="disc-badge">-${disc}%</div>`:''}
@@ -1124,11 +1139,11 @@ function openDetail(docId){
     const v=p.videoUrl.replace('watch?v=','embed/').replace('youtu.be/','www.youtube.com/embed/');
     media=`<iframe class="pd-vid" src="${v}" allowfullscreen></iframe>`;
   } else if(pdImages.length){
-    media=`<div class="pd-img" id="pd-main-img" onclick="openImageZoom(0)"><img src="${pdImages[0]}" alt="${p.name}"><span class="pd-zoom-hint">🔍</span></div>`;
+    media=`<div class="pd-img" id="pd-main-img" onclick="openImageZoom(0)"><img src="${cld(pdImages[0],800)}" alt="${p.name}"><span class="pd-zoom-hint">🔍</span></div>`;
     if(pdImages.length>1){
       media+=`<div style="display:flex;gap:6px;margin-bottom:11px;overflow-x:auto;">${pdImages.map((url,i)=>
         `<div onclick="setPdMainImage(${i})" style="width:54px;height:54px;flex-shrink:0;border-radius:8px;overflow:hidden;border:2px solid ${i===0?'var(--primary)':'var(--border)'};cursor:pointer;" id="pd-thumb-${i}">
-          <img src="${url}" style="width:100%;height:100%;object-fit:cover;">
+          <img src="${cld(url,150)}" style="width:100%;height:100%;object-fit:cover;">
         </div>`).join('')}</div>`;
     }
   } else {
@@ -1218,7 +1233,7 @@ function showExitOffer(){
   const mainImg = (p.images && p.images.length) ? p.images[0] : p.imageUrl;
   document.getElementById('exit-offer-content').innerHTML = `
     <div style="position:relative;border-radius:14px;overflow:hidden;margin-bottom:12px;">
-      ${mainImg?`<img src="${mainImg}" alt="${p.name}" style="width:100%;height:200px;object-fit:cover;">`:`<div style="width:100%;height:200px;display:flex;align-items:center;justify-content:center;font-size:52px;background:#f3f3f3;">📦</div>`}
+      ${mainImg?`<img src="${cld(mainImg,600)}" alt="${p.name}" style="width:100%;height:200px;object-fit:cover;">`:`<div style="width:100%;height:200px;display:flex;align-items:center;justify-content:center;font-size:52px;background:#f3f3f3;">📦</div>`}
       <div style="position:absolute;top:10px;right:10px;background:#EF4444;color:#fff;font-weight:800;font-size:13px;padding:4px 10px;border-radius:20px;">-${disc}%</div>
     </div>
     <div style="font-weight:700;font-size:15px;margin-bottom:6px;">${p.name}</div>
@@ -1279,7 +1294,7 @@ let pdCurrentImgIdx = 0;
 function setPdMainImage(idx){
   pdCurrentImgIdx = idx;
   const mainImg = document.querySelector('#pd-main-img img');
-  if(mainImg && pdImages[idx]) mainImg.src = pdImages[idx];
+  if(mainImg && pdImages[idx]) mainImg.src = cld(pdImages[idx],800);
   const mainWrap = document.getElementById('pd-main-img');
   if(mainWrap) mainWrap.setAttribute('onclick','openImageZoom('+idx+')');
   pdImages.forEach((_,i)=>{
@@ -1299,7 +1314,7 @@ function openImageZoom(idx){
 }
 function renderImageZoom(){
   const img = document.getElementById('zoom-img');
-  if(img) img.src = pdImages[zoomImgIdx];
+  if(img) img.src = cld(pdImages[zoomImgIdx],1600);
   document.getElementById('zoom-counter').textContent = (zoomImgIdx+1)+' / '+pdImages.length;
   document.getElementById('zoom-prev').style.display = pdImages.length>1 ? 'flex' : 'none';
   document.getElementById('zoom-next').style.display = pdImages.length>1 ? 'flex' : 'none';
@@ -1350,7 +1365,7 @@ function openOrderModal(docId){
   if(p){
     document.getElementById('order-prod-preview').style.display='flex';
     const mainImg = (p.images && p.images.length) ? p.images[0] : p.imageUrl;
-    const imgEl=document.getElementById('opp-img');imgEl.innerHTML=mainImg?`<img src="${mainImg}" alt="${p.name}">`:'📦';
+    const imgEl=document.getElementById('opp-img');imgEl.innerHTML=mainImg?`<img src="${cld(mainImg,120)}" alt="${p.name}">`:'📦';
     document.getElementById('opp-name').textContent=p.name;
     document.getElementById('opp-price').textContent='৳'+(p.sale||p.regular||0).toLocaleString();
     document.getElementById('opp-old').textContent=p.sale&&p.regular&&p.sale<p.regular?'৳'+p.regular.toLocaleString():'';
@@ -1507,7 +1522,7 @@ function openCart(){
   const items=document.getElementById('cart-items'),footer=document.getElementById('cart-footer');
   if(!cart.length){items.innerHTML='<div class="es"><div class="ei">🛒</div><div style="font-family:\'Hind Siliguri\'">Cart খালি</div></div>';footer.style.display='none';}
   else{
-    items.innerHTML=cart.map(c=>`<div class="ci-row"><div class="ci-img">${c.imageUrl?`<img src="${c.imageUrl}" alt="">`:'📦'}</div><div class="ci-info"><div class="ci-name">${c.name}</div><div class="ci-price">৳${(c.price*c.qty).toLocaleString()} (x${c.qty})</div></div><button class="ci-rm" onclick="rmCart('${c.id}')">✕</button></div>`).join('');
+    items.innerHTML=cart.map(c=>`<div class="ci-row"><div class="ci-img">${c.imageUrl?`<img src="${cld(c.imageUrl,100)}" alt="">`:'📦'}</div><div class="ci-info"><div class="ci-name">${c.name}</div><div class="ci-price">৳${(c.price*c.qty).toLocaleString()} (x${c.qty})</div></div><button class="ci-rm" onclick="rmCart('${c.id}')">✕</button></div>`).join('');
     const tot=cart.reduce((a,c)=>a+c.price*c.qty,0);
     document.getElementById('cart-total').innerHTML=`<div class="ost-row"><span>মোট</span><span class="ost-total-val">৳${tot.toLocaleString()}</span></div>`;
     footer.style.display='block';
