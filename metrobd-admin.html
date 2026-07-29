@@ -314,6 +314,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
   <div class="ph">
     <div><div class="pt">Orders</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-p btn-sm" onclick="openCreateOrder()">➕ Create Order</button>
       <button class="btn btn-c btn-sm" onclick="exportCSV()">📥 CSV (এই পেজ)</button>
     </div>
   </div>
@@ -626,7 +627,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 <div class="mo" id="edit-order-modal">
   <div class="md" style="max-width:600px;">
     <button class="mc" onclick="cm('edit-order-modal')">✕</button>
-    <div class="md-title">✏️ Edit Order — <span id="eo-invoice" style="color:var(--accent);"></span></div>
+    <div class="md-title" id="eo-title">✏️ Edit Order — <span id="eo-invoice" style="color:var(--accent);"></span></div>
     <div class="fg-2">
       <div class="fg"><label>Customer Name *</label><input type="text" id="eo-name"></div>
       <div class="fg"><label>Phone *</label><input type="tel" id="eo-phone"></div>
@@ -995,6 +996,7 @@ function saveAll(){
 let curOF = 'all';
 let editP=null, editC=null, editCou=null, editU=null, editB=null;
 let curEditOId = null;
+let creatingNewOrder = false; // true while the edit-order modal is being used to CREATE a manual order
 let curViewOId = null;
 let curEditOSnapshotRef = null; // Firestore doc ref of order currently open in edit-status modal
 let curPrintO = null;
@@ -1424,7 +1426,9 @@ function onEditOrderCityChange(){
 function openFullOrderEdit(docId){
   if(!docId) return;
   const o = findOrderAnywhere(docId); if(!o) return;
+  creatingNewOrder = false;
   curEditOId = docId;
+  document.getElementById('eo-title').innerHTML = '✏️ Edit Order — <span id="eo-invoice" style="color:var(--accent);"></span>';
   document.getElementById('eo-invoice').textContent = o.invoice || '';
   document.getElementById('eo-name').value = (o.name && o.name!=='(নাম নেই)') ? o.name : '';
   document.getElementById('eo-phone').value = o.phone || '';
@@ -1462,6 +1466,35 @@ function openFullOrderEdit(docId){
   om('edit-order-modal');
 }
 
+// ══════════════════════════════════════════
+// MANUAL ORDER CREATION — for orders that come in over phone/WhatsApp/Facebook inbox.
+// Reuses the same edit-order modal, but in "create" mode: fields start empty, and Save
+// writes a brand-new document to ORDERS_COL (with the createdAt field the security
+// rules require) instead of updating an existing one.
+// ══════════════════════════════════════════
+function openCreateOrder(){
+  creatingNewOrder = true;
+  curEditOId = null;
+  document.getElementById('eo-title').innerHTML = '➕ নতুন অর্ডার (Manual)';
+  document.getElementById('eo-name').value = '';
+  document.getElementById('eo-phone').value = '';
+  document.getElementById('eo-address').value = '';
+  document.getElementById('eo-note').value = '';
+  document.getElementById('eo-qty').value = 1;
+  document.getElementById('eo-price').value = 0;
+  document.getElementById('eo-disc').value = 0;
+  document.getElementById('eo-total').value = 0;
+  document.getElementById('eo-status').value = 'Processing';
+  populateEditOrderCityDropdown();
+  document.getElementById('eo-city').value = '';
+  document.getElementById('eo-zone').innerHTML = '<option value="">Select a Zone</option>';
+  const prodSel = document.getElementById('eo-prod');
+  prodSel.innerHTML = '<option value="">Select Product</option>' + products.map(p=>`<option value="${p.id}">${p.name} — ৳${p.sale||p.regular}</option>`).join('');
+  const couSel = document.getElementById('eo-cou');
+  couSel.innerHTML = '<option value="">Select Courier</option>' + couriers.map(c=>`<option>${c.name}</option>`).join('');
+  om('edit-order-modal');
+}
+
 // When the admin picks a different product in the edit form, auto-fill its current price
 // (admin can still override it manually afterward) and recalculate the total.
 function onEditOrderProductChange(){
@@ -1492,7 +1525,7 @@ function recalcEditOrderTotal(){
 })();
 
 function saveFullOrderEdit(){
-  if(!curEditOId) return;
+  if(!creatingNewOrder && !curEditOId) return;
   const name = document.getElementById('eo-name').value.trim();
   const phone = document.getElementById('eo-phone').value.trim();
   const address = document.getElementById('eo-address').value.trim();
@@ -1517,6 +1550,37 @@ function saveFullOrderEdit(){
     status: document.getElementById('eo-status').value,
     note: document.getElementById('eo-note').value
   };
+
+  // ── CREATE mode: write a brand-new order document ──
+  if(creatingNewOrder){
+    const now = new Date();
+    const newOrder = {
+      invoice: getInvNum(),
+      ...updateData,
+      payment: 'Cash on Delivery',
+      delivery: 0,
+      date: now.toISOString().split('T')[0],
+      time: now.toLocaleTimeString(),
+      createdAtTs: firebase.firestore.Timestamp.now(),
+      createdAt: now.toISOString(), // security rules require this field on every new order doc
+      isNew: true,
+      source: 'admin-manual'
+    };
+    ORDERS_COL.add(newOrder).then(()=>{
+      creatingNewOrder = false;
+      cm('edit-order-modal');
+      toast('নতুন অর্ডার তৈরি হয়েছে! ✅ ' + newOrder.invoice);
+      const active = document.querySelector('.page.active');
+      const pidNow = active ? active.id.replace('pg-','') : '';
+      // Already on the Orders page? The live listener adds it to the top of the table by
+      // itself. Anywhere else — jump to Orders so the admin sees the new order right away.
+      if(pidNow !== 'orders'){ sp('orders','all'); }
+    }).catch(err=>{
+      console.error('Create order error:', err);
+      toast('অর্ডার তৈরি করতে সমস্যা হয়েছে','var(--red)');
+    });
+    return;
+  }
 
   ORDERS_COL.doc(curEditOId).update(updateData).then(()=>{
     // Update whichever local cache currently holds this order so the UI reflects changes
