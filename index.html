@@ -7,6 +7,23 @@
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Inter:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1042999231989971');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1042999231989971&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
 <style>
 :root{
   --primary:#0095B6;--primary2:#7B2FFF;--accent:#FF2D78;
@@ -431,7 +448,7 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:22px
       <div style="font-size:36px;margin-bottom:8px;">💳</div>
       <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:800;margin-bottom:5px;">bKash/Nagad Cashback</div>
       <div style="font-family:'Hind Siliguri',sans-serif;color:var(--muted);font-size:13px;margin-bottom:12px;">Online payment-এ বিশেষ ছাড়</div>
-      <button class="b-btn b-btn-gold" onclick="openOrderModal(null)">অর্ডার করুন</button>
+      <button class="b-btn b-btn-gold" onclick="showTab('shop')">অর্ডার করুন</button>
     </div>
   </div>
 </div>
@@ -649,6 +666,9 @@ let curCat='all', curProd=null, curQty=1, delType='outside', selPayType='cod';
 // finish it. Reset to null whenever the order modal is opened fresh for a new product/visit.
 let draftOrderId = null;
 let draftSaveTimer = null;
+// Set to true the moment the customer presses "অর্ডার কনফার্ম করুন" — blocks any late/pending
+// draft ("Incomplete") saves from overwriting the confirmed order's status back to Incomplete.
+let orderSubmitted = false;
 
 // ══════════════════════════════════
 // OFFER TIMER
@@ -759,7 +779,7 @@ function renderCustomerBanners(){
       <div class="b-content">
         ${b.text?`<div class="b-title">${b.text}</div>`:''}
         ${b.sub?`<div class="b-sub">${b.sub}</div>`:''}
-        <button class="b-btn b-btn-cyan" onclick="openOrderModal(null)">অর্ডার করুন</button>
+        <button class="b-btn b-btn-cyan" onclick="showTab('shop')">🛍️ অর্ডার করুন</button>
       </div>
     </div>`;
   }).join('');
@@ -1314,7 +1334,16 @@ function updSumm(){
 // ══════════════════════════════════
 function openOrderModal(docId){
   if(docId) curProd=findProd(docId)||curProd;
+  // Manual (product-less) ordering is disabled — an order can only be placed with a
+  // product attached. If somehow no product is selected, send the customer to the shop.
+  if(!curProd){
+    showToast('আগে একটি পণ্য সিলেক্ট করুন','#EF4444');
+    showTab('shop');
+    return;
+  }
   draftOrderId = null; // fresh draft tracking each time the modal opens
+  orderSubmitted = false;
+  clearTimeout(draftSaveTimer);
   document.getElementById('order-form-wrap').style.display='block';
   document.getElementById('order-success').style.display='none';
   const p=curProd;
@@ -1352,6 +1381,10 @@ function scheduleDraftSave(){
 }
 
 function saveDraftOrder(){
+  // Order already confirmed — never write another Incomplete draft for it. This fixes the
+  // bug where a delayed draft save (debounce timer or blur event) could land AFTER the
+  // customer pressed confirm and flip the order's status back to "Incomplete".
+  if(orderSubmitted) return;
   const name=document.getElementById('o-name').value.trim();
   const phone=document.getElementById('o-phone').value.trim();
   const address=document.getElementById('o-address').value.trim();
@@ -1381,7 +1414,16 @@ function saveDraftOrder(){
   if(draftOrderId){
     ORDERS_COL.doc(draftOrderId).set(draftData,{merge:true}).catch(err=>console.error('Draft update error:',err));
   } else {
-    ORDERS_COL.add(draftData).then(ref=>{ draftOrderId = ref.id; }).catch(err=>console.error('Draft create error:',err));
+    ORDERS_COL.add(draftData).then(ref=>{
+      if(orderSubmitted){
+        // The customer confirmed the order while this draft-create was still in flight —
+        // the confirmed order was saved as its own document, so this draft is a leftover
+        // duplicate. Remove it so it never shows up in the admin's Incomplete list.
+        ORDERS_COL.doc(ref.id).delete().catch(()=>{});
+      } else {
+        draftOrderId = ref.id;
+      }
+    }).catch(err=>console.error('Draft create error:',err));
   }
 }
 
@@ -1400,6 +1442,11 @@ function submitOrder(){
   const sub=p?(p.sale||p.regular||0)*(curQty||1):0;
   const now=new Date();
   const mainImg = p ? ((p.images && p.images.length) ? p.images[0] : (p.imageUrl||'')) : '';
+  // From this point on, no more Incomplete draft writes are allowed for this order —
+  // this (plus the guard in saveDraftOrder) is what keeps a confirmed order from being
+  // flipped back to "Incomplete" by a late draft save.
+  orderSubmitted = true;
+  clearTimeout(draftSaveTimer);
   // Each order becomes its OWN document in metrobd_orders (not appended to a shared array anymore).
   // This means many customers can place orders at the same time without write conflicts, and the
   // orders collection can grow to any size without ever hitting Firestore's 1MB-per-document limit.
@@ -1410,6 +1457,7 @@ function submitOrder(){
     note:document.getElementById('o-note').value,deliveryType:delType,status:'Processing',
     date:now.toISOString().split('T')[0],time:now.toLocaleTimeString(),
     createdAtTs:firebase.firestore.Timestamp.now(),
+    createdAt:now.toISOString(),
     isNew:true
   };
   const btn=document.querySelector('.submit-btn');
@@ -1429,6 +1477,8 @@ function submitOrder(){
   }
   function onFail(err){
     console.error(err);
+    // Order didn't go through — allow draft saving again so the visitor isn't lost.
+    orderSubmitted = false;
     showToast('অর্ডার করতে সমস্যা হয়েছে, আবার চেষ্টা করুন','#EF4444');
     if(btn){btn.textContent='✅ অর্ডার কনফার্ম করুন';btn.disabled=false;}
   }
@@ -1436,7 +1486,6 @@ function submitOrder(){
   if(draftOrderId){
     // Upgrade the existing draft (created while the visitor was filling the form) into a
     // real order, instead of creating a brand-new document — avoids duplicate entries.
-    clearTimeout(draftSaveTimer);
     ORDERS_COL.doc(draftOrderId).set(order,{merge:true}).then(onSuccess).catch(onFail);
   } else {
     ORDERS_COL.add(order).then(onSuccess).catch(onFail);
@@ -1466,7 +1515,14 @@ function openCart(){
   om('cart-overlay');
 }
 function rmCart(docId){cart=cart.filter(c=>c.id!==docId);sd('mb_cart',cart);updateCart();openCart();}
-function checkoutCart(){cm('cart-overlay');openOrderModal(null);}
+function checkoutCart(){
+  // Ordering always needs a product attached — open the order form for the first cart item.
+  if(!cart.length){ showToast('Cart খালি — আগে পণ্য যোগ করুন','#EF4444'); return; }
+  const first = findProd(cart[0].id);
+  cm('cart-overlay');
+  if(first){ curProd=first; curQty=cart[0].qty||1; openOrderModal(first._docId); }
+  else { showToast('আগে একটি পণ্য সিলেক্ট করুন','#EF4444'); showTab('shop'); }
+}
 
 // ══════════════════════════════════
 // MODAL
