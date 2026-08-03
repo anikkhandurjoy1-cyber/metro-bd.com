@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://res.cloudinary.com">
 <link rel="preconnect" href="https://firestore.googleapis.com">
 <link rel="preconnect" href="https://www.gstatic.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800;900&family=Inter:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <style>
@@ -20,17 +20,17 @@
   --red:#DC2626;--blue:#2563EB;--purple:#7C3AED;--sw:220px;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-html,body{height:100%;font-family:'Inter','Hind Siliguri',sans-serif;background:var(--dark);color:var(--text);font-size:14px;}
+html,body{height:100%;font-family:'Rubik','Hind Siliguri',sans-serif;background:var(--dark);color:var(--text);font-size:14px;}
 
 /* LOGIN */
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--dark);}
 .login-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:40px 32px;width:100%;max-width:380px;text-align:center;}
 .login-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:24px;}
-.logo-icon{width:44px;height:44px;background:linear-gradient(135deg,var(--primary),var(--primary2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:900;font-size:20px;color:#fff;transform:rotate(-5deg);}
+.logo-icon{width:44px;height:44px;background:linear-gradient(135deg,var(--primary),var(--primary2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Rubik','Hind Siliguri',sans-serif;font-weight:900;font-size:20px;color:#fff;transform:rotate(-5deg);}
 .logo-text{display:flex;flex-direction:column;line-height:1;text-align:left;}
-.logo-metro{font-family:'Syne',sans-serif;font-weight:900;font-size:22px;}
+.logo-metro{font-family:'Rubik','Hind Siliguri',sans-serif;font-weight:900;font-size:22px;}
 .logo-bd{font-size:10px;color:var(--primary);letter-spacing:3px;font-weight:700;}
-.login-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:6px;}
+.login-title{font-family:'Rubik','Hind Siliguri',sans-serif;font-size:20px;font-weight:800;margin-bottom:6px;}
 .login-sub{font-size:13px;color:var(--muted);margin-bottom:28px;font-family:'Hind Siliguri';}
 .login-input{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:12px 16px;border-radius:10px;font-size:14px;outline:none;margin-bottom:14px;transition:border-color 0.2s;}
 .login-input:focus{border-color:var(--primary);}
@@ -52,7 +52,7 @@ html,body{height:100%;font-family:'Inter','Hind Siliguri',sans-serif;background:
 
 /* TOPBAR */
 .topbar{position:fixed;top:0;left:var(--sw);right:0;height:54px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;z-index:99;}
-.tb-title{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;}
+.tb-title{font-family:'Rubik','Hind Siliguri',sans-serif;font-weight:800;font-size:16px;}
 .tb-right{display:flex;align-items:center;gap:12px;}
 .tb-date{font-size:12px;color:var(--muted);}
 .tb-admin{background:rgba(255,45,120,0.1);border:1px solid rgba(255,45,120,0.3);color:var(--primary);padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;}
@@ -74,7 +74,7 @@ html,body{height:100%;font-family:'Inter','Hind Siliguri',sans-serif;background:
 .sc-icon.yw{background:rgba(245,158,11,0.12);}
 .sc-icon.bl{background:rgba(59,130,246,0.12);}
 .sc-icon.pu{background:rgba(139,92,246,0.12);}
-.sc-num{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;}
+.sc-num{font-family:'Rubik','Hind Siliguri',sans-serif;font-size:24px;font-weight:800;}
 .sc-lbl{font-size:12px;color:var(--muted);}
 
 /* TABLE */
@@ -101,7 +101,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 .old-cust{background:rgba(245,158,11,0.15);color:#B45309;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;display:inline-flex;align-items:center;gap:3px;}
 
 /* BUTTONS */
-.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all 0.15s;font-family:'Inter',sans-serif;}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all 0.15s;font-family:'Rubik','Hind Siliguri',sans-serif;}
 .btn-p{background:var(--primary);color:#fff;}
 .btn-p:hover{opacity:0.85;}
 .btn-s{background:var(--green);color:#fff;}
@@ -116,7 +116,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 /* FORMS */
 .fg{display:flex;flex-direction:column;gap:5px;margin-bottom:14px;}
 .fg label{font-size:12px;font-weight:600;color:var(--muted);}
-.fg input,.fg select,.fg textarea{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:10px 13px;border-radius:8px;font-size:13px;font-family:'Inter','Hind Siliguri',sans-serif;outline:none;transition:border-color 0.2s;}
+.fg input,.fg select,.fg textarea{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:10px 13px;border-radius:8px;font-size:13px;font-family:'Rubik','Hind Siliguri',sans-serif;outline:none;transition:border-color 0.2s;}
 .fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--primary);}
 .fg textarea{resize:vertical;min-height:80px;}
 .fg select option{background:var(--card);}
@@ -125,7 +125,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 
 /* PAGE HEADER */
 .ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;}
-.pt{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;}
+.pt{font-family:'Rubik','Hind Siliguri',sans-serif;font-size:19px;font-weight:800;}
 
 /* STATUS TABS */
 .stabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
@@ -141,7 +141,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 .mo{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.85);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;}
 .mo.active{display:flex;}
 .md{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;position:relative;}
-.md-title{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;margin-bottom:18px;}
+.md-title{font-family:'Rubik','Hind Siliguri',sans-serif;font-weight:800;font-size:16px;margin-bottom:18px;}
 .mc{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;}
 
 /* SETTINGS */
@@ -280,7 +280,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
     <div class="sc"><div class="sc-icon cy">💰</div><div class="sc-num" id="d-rev">৳0</div><div class="sc-lbl">Revenue</div></div>
     <div class="sc" onclick="sp('products')"><div class="sc-icon pk">📦</div><div class="sc-num" id="d-prods">0</div><div class="sc-lbl">Products</div></div>
   </div>
-  <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">💡 Dashboard-এর সংখ্যাগুলো সর্বশেষ ৫০০টি অর্ডারের উপর ভিত্তি করে দেখানো হচ্ছে (পারফরম্যান্সের জন্য)। সম্পূর্ণ হিসাবের জন্য Order Report দেখুন।</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">💡 Dashboard-এর সংখ্যাগুলো সর্বশেষ ২০০টি অর্ডারের উপর ভিত্তি করে দেখানো হচ্ছে (পারফরম্যান্সের জন্য)। সম্পূর্ণ হিসাবের জন্য Order Report দেখুন।</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
     <div class="tc">
       <div class="th"><div class="tt">আজকের রিপোর্ট</div></div>
@@ -804,6 +804,16 @@ const CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOU
 const gd = (k,d) => { try{ return JSON.parse(localStorage.getItem(k))||d; }catch(e){ return d; } };
 const sd = (k,v) => localStorage.setItem(k, JSON.stringify(v));
 
+// Local (Bangladesh) date as YYYY-MM-DD. IMPORTANT: toISOString() returns the UTC date, and
+// Bangladesh is UTC+6 — so between 12 AM and 6 AM local time it still returns YESTERDAY's date.
+// That's why orders placed after midnight used to land on the previous day's report. Every
+// date we store/compare now uses local time instead.
+function localDate(d){
+  const dt = d || new Date();
+  const pad = n => String(n).padStart(2,'0');
+  return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());
+}
+
 // Cloudinary URL optimizer: inserts f_auto,q_auto,w_<width> so tables full of thumbnails load
 // tiny right-sized versions instead of full-resolution originals. Non-Cloudinary URLs pass through.
 function cld(url,w){
@@ -827,10 +837,10 @@ let dataLoaded = false;
 
 // Dashboard-only aggregate counters (computed from a capped recent-orders fetch, NOT every order ever placed)
 let dashboardOrdersSample = []; // last 500 orders, used only for dashboard stat cards + recent list
-const DASHBOARD_SAMPLE_LIMIT = 500;
+const DASHBOARD_SAMPLE_LIMIT = 200; // smaller sample = much faster dashboard on mobile data
 
 // Orders page pagination state
-const ORDERS_PAGE_SIZE = 50;
+const ORDERS_PAGE_SIZE = 25; // smaller pages load noticeably faster on mobile
 let orderPageCursors = [null]; // orderPageCursors[i] = the "startAfter" doc snapshot to use to load page i (0-indexed); index 0 = null (first page)
 let curOrderPage = 0;
 let lastOrderPageHasMore = false;
@@ -1141,24 +1151,73 @@ function loadProducts(){
 // new-order watcher above), and pulling to refresh / navigating in after a longer gap re-fetches.
 // ══════════════════════════════════════════
 let dashboardLastLoadedAt = 0;
-const DASHBOARD_CACHE_MS = 60000; // 1 minute
+const DASHBOARD_CACHE_MS = 180000; // 3 minutes — a real new order still refreshes it instantly (see the new-order watcher)
+
+// Shows ⏳ on the stat cards so a slow connection looks like "loading", not like "0 orders".
+function showDashboardLoading(){
+  if(dashboardOrdersSample.length) return; // already have numbers on screen — don't blank them out
+  ['total','proc','pay','hold','can','comp','rev','prods'].forEach(id=>{
+    const el = document.getElementById('d-'+id);
+    if(el) el.textContent = '⏳';
+  });
+}
+
+// Rehydrate Firestore Timestamp fields we saved to localStorage (JSON loses the Timestamp class)
+function reviveTs(o){
+  if(o && o.createdAtTs && typeof o.createdAtTs === 'object' && ('seconds' in o.createdAtTs || '_seconds' in o.createdAtTs)){
+    const s = o.createdAtTs.seconds ?? o.createdAtTs._seconds;
+    const n = o.createdAtTs.nanoseconds ?? o.createdAtTs._nanoseconds ?? 0;
+    if(typeof s === 'number') o.createdAtTs = new firebase.firestore.Timestamp(s, n);
+  }
+  return o;
+}
+
 function loadDashboard(force){
   if(!force && dashboardOrdersSample.length && (Date.now()-dashboardLastLoadedAt)<DASHBOARD_CACHE_MS){
     renderDashboard();
     return;
   }
-  ORDERS_COL.orderBy('createdAtTs','desc').limit(DASHBOARD_SAMPLE_LIMIT).get().then(snap=>{
-    dashboardOrdersSample = snap.docs.map(d=>({...d.data(), _docId:d.id}));
-    dashboardLastLoadedAt = Date.now();
-    renderDashboard();
-  }).catch(err=>{
-    console.error('Dashboard load error:',err);
-    toast('ড্যাশবোর্ড লোড করতে সমস্যা','var(--red)');
+  // localStorage cache: paint the dashboard instantly from the last successful fetch — even
+  // before Firestore has answered. Feels basically instant on repeat opens, especially on slow data.
+  if(!dashboardOrdersSample.length){
+    try{
+      const cached = localStorage.getItem('mb_dashboard_cache');
+      if(cached){
+        const arr = JSON.parse(cached);
+        if(Array.isArray(arr) && arr.length){
+          dashboardOrdersSample = arr.map(reviveTs);
+          renderDashboard();
+        }
+      }
+    }catch(e){}
+  }
+  if(!dashboardOrdersSample.length) showDashboardLoading();
+  const q = ORDERS_COL.orderBy('createdAtTs','desc').limit(DASHBOARD_SAMPLE_LIMIT);
+  // Cache-first: Firestore keeps recent orders on the device, so paint the dashboard from local
+  // disk (if it's fresher than our localStorage snapshot), then quietly refresh from the server.
+  q.get({source:'cache'}).then(snap=>{
+    if(!snap.empty){
+      dashboardOrdersSample = snap.docs.map(d=>({...d.data(), _docId:d.id}));
+      renderDashboard();
+    }
+  }).catch(()=>{}).finally(()=>{
+    q.get().then(snap=>{
+      dashboardOrdersSample = snap.docs.map(d=>({...d.data(), _docId:d.id}));
+      dashboardLastLoadedAt = Date.now();
+      renderDashboard();
+      // Stash a slim copy for next open — saves re-downloading on every dashboard visit.
+      try{ localStorage.setItem('mb_dashboard_cache', JSON.stringify(dashboardOrdersSample)); }catch(e){}
+    }).catch(err=>{
+      console.error('Dashboard load error:',err);
+      // Nothing on screen at all? Show 0s rather than a stuck spinner, and tell the admin why.
+      if(!dashboardOrdersSample.length) renderDashboard();
+      toast('ড্যাশবোর্ড লোড করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)');
+    });
   });
 }
 
 function renderDashboard(){
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDate();
   const src = dashboardOrdersSample;
   const cnt = s => src.filter(o=>s==='all'||o.status===s).length;
   const vals = [src.length, cnt('Processing'), cnt('Payment Pending'), cnt('On Hold'), cnt('Canceled'), cnt('Completed')];
@@ -1177,7 +1236,19 @@ function renderDashboard(){
     document.getElementById('inc-badge').textContent = snap.docs.length + (snap.docs.length>=200?'+':'');
   }).catch(()=>{});
 
-  const tod = src.filter(o=>o.date===today);
+  // "Today Orders" uses the createdAtTs timestamp compared against today's LOCAL BD midnight range —
+  // that way even orders written by an older code build (which stored a UTC-based `date` field)
+  // still land in the right day here. Falls back to the string date only when timestamp is missing.
+  const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
+  const endOfToday   = new Date(); endOfToday.setHours(23,59,59,999);
+  const startMs = startOfToday.getTime(), endMs = endOfToday.getTime();
+  const tod = src.filter(o=>{
+    if(o.createdAtTs && typeof o.createdAtTs.toMillis === 'function'){
+      const ms = o.createdAtTs.toMillis();
+      return ms >= startMs && ms <= endMs;
+    }
+    return o.date === today;
+  });
   const statuses = ['Processing','Payment Pending','On Hold','Completed','Canceled','Delivered','Invoiced'];
   document.getElementById('today-report').innerHTML = [
     ['Today Orders', tod.length],
@@ -1559,7 +1630,7 @@ function saveFullOrderEdit(){
       ...updateData,
       payment: 'Cash on Delivery',
       delivery: 0,
-      date: now.toISOString().split('T')[0],
+      date: localDate(now),
       time: now.toLocaleTimeString(),
       createdAtTs: firebase.firestore.Timestamp.now(),
       createdAt: now.toISOString(), // security rules require this field on every new order doc
@@ -1645,7 +1716,7 @@ function exportCSV(){
   const rows=[['Invoice','Name','Phone','Address','Product','Qty','Total','Courier','Status','Date']];
   orders.forEach(o=>rows.push([o.invoice,o.name,o.phone,o.address,o.product,o.qty,o.total,o.courier,o.status,o.date]));
   const csv=rows.map(r=>r.map(x=>`"${x||''}"`).join(',')).join('\n');
-  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv); a.download='orders-'+new Date().toISOString().split('T')[0]+'.csv'; a.click();
+  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv); a.download='orders-'+localDate()+'.csv'; a.click();
   toast('CSV Downloaded (এই পেজের অর্ডার)! 📥');
 }
 
