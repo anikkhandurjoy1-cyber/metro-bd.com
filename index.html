@@ -1144,8 +1144,19 @@ function openDetail(docId){
   pdImages = (p.images && p.images.length) ? p.images : (p.imageUrl ? [p.imageUrl] : []);
   let media='';
   if(p.videoUrl){
-    const v=p.videoUrl.replace('watch?v=','embed/').replace('youtu.be/','www.youtube.com/embed/');
-    media=`<iframe class="pd-vid" src="${v}" allowfullscreen></iframe>`;
+    // YouTube link → embed iframe. Cloudinary MP4 (or any direct video file) → native <video>
+    // player right inside the product detail — no external redirect, autoplays muted on tap.
+    const url = p.videoUrl;
+    const isYt = url.includes('youtube.com') || url.includes('youtu.be');
+    if(isYt){
+      const v = url.replace('watch?v=','embed/').replace('youtu.be/','www.youtube.com/embed/');
+      media=`<iframe class="pd-vid" src="${v}" allowfullscreen></iframe>`;
+    } else {
+      // Direct video file (Cloudinary MP4 etc.) — first product image (if any) is used as the poster
+      // so the player shows a real preview frame before playback.
+      const poster = pdImages.length ? cld(pdImages[0],800) : '';
+      media=`<video class="pd-vid" src="${url}" ${poster?`poster="${poster}"`:''} controls playsinline preload="metadata" style="background:#000;object-fit:contain;"></video>`;
+    }
   } else if(pdImages.length){
     media=`<div class="pd-img" id="pd-main-img" onclick="openImageZoom(0)"><img src="${cld(pdImages[0],800)}" alt="${p.name}"><span class="pd-zoom-hint">🔍</span></div>`;
     if(pdImages.length>1){
