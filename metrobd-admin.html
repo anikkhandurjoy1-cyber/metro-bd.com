@@ -676,6 +676,12 @@ tr:hover td{background:rgba(0,0,0,0.02);}
         <div id="pm-img-slots" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;"></div>
         <div style="margin-top:6px;font-size:11px;color:var(--muted);">💡 ছবি ছোট সাইজের (১MB-এর কম) দিলে ভালো কাজ করবে</div>
       </div>
+      <div class="fg" style="grid-column:1/-1">
+        <label>🎥 Product Video <span style="color:var(--muted);font-size:11px;">(Optional — 1-2 মিনিটের ছোট ভিডিও, mobile/pc থেকে আপলোড করুন)</span></label>
+        <div id="pm-video-slot" style="margin-top:6px;"></div>
+        <div style="margin-top:6px;font-size:11px;color:var(--muted);">💡 সর্বোচ্চ 100MB। MP4 ফাইল best। YouTube link দিতে চাইলে নিচে paste করুন।</div>
+        <input type="text" id="pm-video-yt" placeholder="অথবা YouTube link paste করুন (https://youtube.com/watch?v=...)" style="margin-top:8px;">
+      </div>
       <div class="fg" style="grid-column:1/-1"><label>Description</label><textarea id="pm-desc" placeholder="Product description..."></textarea></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:14px;">
@@ -799,6 +805,7 @@ const PRODUCTS_COL = db.collection('metrobd_products');
 const CLOUDINARY_CLOUD_NAME = "jqkplosf";
 const CLOUDINARY_UPLOAD_PRESET = "metrobd-product";
 const CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD_NAME+"/image/upload";
+const CLOUDINARY_VIDEO_UPLOAD_URL = "https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD_NAME+"/video/upload";
 
 // LocalStorage fallback helpers (used only for admin password + cart-like local prefs)
 const gd = (k,d) => { try{ return JSON.parse(localStorage.getItem(k))||d; }catch(e){ return d; } };
@@ -1925,17 +1932,139 @@ function ensureUniqueSlug(baseSlug, excludeDocId){
 }
 
 function resetPF(){
-  ['pm-name','pm-code','pm-slug','pm-desc'].forEach(id=>document.getElementById(id).value='');
+  ['pm-name','pm-code','pm-slug','pm-desc','pm-video-yt'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
   document.getElementById('pm-reg').value=''; document.getElementById('pm-sale').value='';
   document.getElementById('pm-st').value='Active'; document.getElementById('pm-del').value='Yes';
   pmImages = [];
+  pmVideoUrl = '';
   slugManuallyEdited = false;
   renderImgSlots();
+  renderVideoSlot();
   populateSelects();
   document.getElementById('pm-title').textContent='Add Product';
 }
 
+// ══════════════════════════════════════════
+// PRODUCT VIDEO — one direct-uploaded MP4 (or a pasted YouTube link) per product.
+// Uploaded to Cloudinary the same way images are, but through the /video/upload endpoint.
+// The customer site detects Cloudinary MP4 vs YouTube automatically and renders the right player.
+// ══════════════════════════════════════════
+let pmVideoUrl = '';
+let pmVideoUploading = false;
+
+function isYouTubeUrl(u){ return typeof u==='string' && (u.includes('youtube.com')||u.includes('youtu.be')); }
+
+function renderVideoSlot(){
+  const wrap = document.getElementById('pm-video-slot');
+  if(!wrap) return;
+  if(pmVideoUploading){
+    wrap.innerHTML = `<div style="width:100%;padding:14px;background:var(--surface);border:1px dashed var(--border);border-radius:8px;text-align:center;font-family:'Hind Siliguri';">
+      ⏳ ভিডিও আপলোড হচ্ছে... <span id="pm-video-progress" style="font-weight:700;color:var(--primary);">0%</span>
+      <div style="margin-top:6px;font-size:11px;color:var(--muted);">বন্ধ করবেন না — বড় ভিডিও ২-৫ মিনিট নিতে পারে</div>
+    </div>`;
+    return;
+  }
+  if(pmVideoUrl){
+    // YouTube link → show a small preview label. Cloudinary MP4 (or any direct video) → inline <video> preview.
+    const isYt = isYouTubeUrl(pmVideoUrl);
+    wrap.innerHTML = `<div style="position:relative;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;">
+      ${isYt
+        ? `<div style="font-family:'Hind Siliguri';font-size:13px;">🎬 YouTube link সেট আছে<br><a href="${pmVideoUrl}" target="_blank" style="color:var(--accent);font-size:11px;word-break:break-all;">${pmVideoUrl}</a></div>`
+        : `<video src="${pmVideoUrl}" controls preload="metadata" style="width:100%;max-height:220px;border-radius:6px;background:#000;"></video>`}
+      <button type="button" onclick="removeProductVideo()" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:50%;width:26px;height:26px;font-size:14px;cursor:pointer;line-height:1;">✕</button>
+    </div>`;
+    return;
+  }
+  wrap.innerHTML = `<label style="display:flex;align-items:center;justify-content:center;gap:8px;padding:22px;background:var(--surface);border:2px dashed var(--border);border-radius:10px;cursor:pointer;font-family:'Hind Siliguri';">
+    <span style="font-size:24px;">🎥</span>
+    <span>ভিডিও আপলোড করতে ক্লিক করুন</span>
+    <input type="file" accept="video/*" onchange="handleProductVideoUpload(this)" style="display:none;">
+  </label>`;
+}
+
+function removeProductVideo(){
+  pmVideoUrl = '';
+  const yt = document.getElementById('pm-video-yt'); if(yt) yt.value='';
+  renderVideoSlot();
+}
+
+function handleProductVideoUpload(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('video/')){ toast('শুধু ভিডিও ফাইল দিন','var(--red)'); return; }
+  const MAX_BYTES = 100 * 1024 * 1024; // 100 MB cap — Cloudinary free tier friendly, plus keeps uploads sane on mobile data
+  if(file.size > MAX_BYTES){
+    toast('ভিডিও ১০০MB-এর বেশি — কম্প্রেস করে আবার চেষ্টা করুন','var(--red)');
+    return;
+  }
+  pmVideoUploading = true;
+  renderVideoSlot();
+
+  // XHR (not fetch) so we can show live upload progress — big videos on slow BD mobile data can
+  // take a while, and a stuck-looking "0%" feels a lot worse than a moving progress number.
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', CLOUDINARY_VIDEO_UPLOAD_URL);
+  xhr.upload.onprogress = e=>{
+    if(!e.lengthComputable) return;
+    const pct = Math.round((e.loaded/e.total)*100);
+    const el = document.getElementById('pm-video-progress');
+    if(el) el.textContent = pct + '%';
+  };
+  xhr.onload = ()=>{
+    pmVideoUploading = false;
+    try{
+      const data = JSON.parse(xhr.responseText||'{}');
+      if(xhr.status>=200 && xhr.status<300 && data.secure_url){
+        pmVideoUrl = data.secure_url;
+        const yt = document.getElementById('pm-video-yt'); if(yt) yt.value='';
+        renderVideoSlot();
+        toast('ভিডিও আপলোড হয়েছে ✅');
+      } else {
+        const msg = (data.error && data.error.message) ? data.error.message : ('Upload failed ('+xhr.status+')');
+        renderVideoSlot();
+        // Cloudinary's unsigned preset defaults to "Image" resource type. If Anik hasn't switched
+        // it to "Auto" yet, video uploads come back with a preset-type error — tell him plainly.
+        if(/resource_?type|preset|not allowed/i.test(msg)){
+          toast('Cloudinary preset-এ Video allow করা নেই। Preset settings → Resource type: Auto করুন।','var(--red)');
+        } else {
+          toast('ভিডিও আপলোড ফেইল: '+msg,'var(--red)');
+        }
+        console.error('Cloudinary video upload error:', data);
+      }
+    }catch(err){
+      pmVideoUploading = false;
+      renderVideoSlot();
+      toast('ভিডিও আপলোড ফেইল','var(--red)');
+      console.error(err);
+    }
+  };
+  xhr.onerror = ()=>{
+    pmVideoUploading = false;
+    renderVideoSlot();
+    toast('নেট সমস্যা — ভিডিও আপলোড ফেইল','var(--red)');
+  };
+  xhr.send(fd);
+}
+
+// If the admin pastes a YouTube link, mirror it into pmVideoUrl so Save picks it up.
+document.addEventListener('input', e=>{
+  if(e.target && e.target.id === 'pm-video-yt'){
+    const v = e.target.value.trim();
+    if(v && isYouTubeUrl(v)){
+      pmVideoUrl = v;
+      renderVideoSlot();
+    } else if(!v && pmVideoUrl && isYouTubeUrl(pmVideoUrl)){
+      pmVideoUrl = '';
+      renderVideoSlot();
+    }
+  }
+});
+
 function saveProduct(){
+  if(pmVideoUploading){ toast('ভিডিও আপলোড শেষ হওয়ার অপেক্ষা করুন','var(--yellow)'); return; }
   const name=document.getElementById('pm-name').value.trim();
   const reg=parseFloat(document.getElementById('pm-reg').value);
   if(!name||!reg){ toast('নাম ও দাম দিন','var(--red)'); return; }
@@ -1951,6 +2080,7 @@ function saveProduct(){
     delivery:document.getElementById('pm-del').value,
     images,
     imageUrl: images[0] || '', // kept for backward compatibility with older code paths
+    videoUrl: pmVideoUrl || '',
     desc:document.getElementById('pm-desc').value
   };
 
@@ -2027,6 +2157,11 @@ function editProduct(docId){
   // Support both old products (single imageUrl) and new ones (images array)
   pmImages = (editP.images && editP.images.length) ? [...editP.images] : (editP.imageUrl ? [editP.imageUrl] : []);
   renderImgSlots();
+  // Restore the video slot too — Cloudinary MP4 gets a live preview, YouTube link goes into the paste box.
+  pmVideoUrl = editP.videoUrl || '';
+  const yt = document.getElementById('pm-video-yt');
+  if(yt) yt.value = (pmVideoUrl && isYouTubeUrl(pmVideoUrl)) ? pmVideoUrl : '';
+  renderVideoSlot();
   om('prod-modal');
 }
 
