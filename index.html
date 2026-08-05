@@ -1169,30 +1169,50 @@ function openDetail(docId){
   const disc=p.sale&&p.regular?Math.round((1-p.sale/p.regular)*100):0;
   pdImages = (p.images && p.images.length) ? p.images : (p.imageUrl ? [p.imageUrl] : []);
   let media='';
-  if(p.videoUrl){
-    // YouTube link → embed iframe. Cloudinary MP4 (or any direct video file) → native <video>
-    // player right inside the product detail — no external redirect, autoplays muted on tap.
+  const hasVideo = !!p.videoUrl;
+  const hasImages = pdImages.length > 0;
+
+  // Video block (if any) — always at the top so the customer sees it first.
+  if(hasVideo){
     const url = p.videoUrl;
     const isYt = url.includes('youtube.com') || url.includes('youtu.be');
     if(isYt){
       const v = url.replace('watch?v=','embed/').replace('youtu.be/','www.youtube.com/embed/');
-      media=`<iframe class="pd-vid" src="${v}" allowfullscreen></iframe>`;
+      media += `<iframe class="pd-vid" src="${v}" allowfullscreen></iframe>`;
     } else {
       // Direct video file (Cloudinary MP4 etc.) — first product image (if any) is used as the poster
       // so the player shows a real preview frame before playback.
-      const poster = pdImages.length ? cld(pdImages[0],800) : '';
-      media=`<video class="pd-vid" src="${url}" ${poster?`poster="${poster}"`:''} controls playsinline preload="metadata" style="background:#000;object-fit:contain;"></video>`;
+      const poster = hasImages ? cld(pdImages[0],800) : '';
+      media += `<video class="pd-vid" src="${url}" ${poster?`poster="${poster}"`:''} controls playsinline preload="metadata" style="background:#000;object-fit:contain;"></video>`;
     }
-  } else if(pdImages.length){
-    media=`<div class="pd-img" id="pd-main-img" onclick="openImageZoom(0)"><img src="${cld(pdImages[0],800)}" alt="${p.name}"><span class="pd-zoom-hint">🔍</span></div>`;
-    if(pdImages.length>1){
-      media+=`<div style="display:flex;gap:6px;margin-bottom:11px;overflow-x:auto;">${pdImages.map((url,i)=>
-        `<div onclick="setPdMainImage(${i})" style="width:54px;height:54px;flex-shrink:0;border-radius:8px;overflow:hidden;border:2px solid ${i===0?'var(--primary)':'var(--border)'};cursor:pointer;" id="pd-thumb-${i}">
-          <img src="${cld(url,150)}" style="width:100%;height:100%;object-fit:cover;">
+  }
+
+  // Image block — behavior depends on whether a video is also being shown.
+  if(hasImages){
+    if(!hasVideo){
+      // No video → the classic big main image + thumbnail strip that swaps the main.
+      media += `<div class="pd-img" id="pd-main-img" onclick="openImageZoom(0)"><img src="${cld(pdImages[0],800)}" alt="${p.name}"><span class="pd-zoom-hint">🔍</span></div>`;
+      if(pdImages.length>1){
+        media += `<div style="display:flex;gap:6px;margin-bottom:11px;overflow-x:auto;">${pdImages.map((url,i)=>
+          `<div onclick="setPdMainImage(${i})" style="width:54px;height:54px;flex-shrink:0;border-radius:8px;overflow:hidden;border:2px solid ${i===0?'var(--primary)':'var(--border)'};cursor:pointer;" id="pd-thumb-${i}">
+            <img src="${cld(url,150)}" style="width:100%;height:100%;object-fit:cover;">
+          </div>`).join('')}</div>`;
+      }
+    } else {
+      // Video is already the main viewer → show every image as a bigger tappable tile below it.
+      // Tapping a tile opens the full-screen zoom lightbox for that image (not the video).
+      media += `<div style="font-size:12px;color:var(--muted);font-family:'Hind Siliguri';margin:8px 0 6px;">📷 আরও ছবি — ট্যাপ করে বড় করে দেখুন</div>`;
+      media += `<div style="display:flex;gap:8px;margin-bottom:11px;overflow-x:auto;padding-bottom:4px;">${pdImages.map((url,i)=>
+        `<div onclick="openImageZoom(${i})" style="width:88px;height:88px;flex-shrink:0;border-radius:10px;overflow:hidden;border:1px solid var(--border);cursor:pointer;position:relative;background:#fff;">
+          <img src="${cld(url,200)}" style="width:100%;height:100%;object-fit:cover;">
+          <span style="position:absolute;bottom:3px;right:3px;background:rgba(0,0,0,.6);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;">🔍</span>
         </div>`).join('')}</div>`;
     }
-  } else {
-    media=`<div class="pd-img" style="font-size:52px">📦</div>`;
+  }
+
+  // Neither video nor images — show the box placeholder as before.
+  if(!hasVideo && !hasImages){
+    media = `<div class="pd-img" style="font-size:52px">📦</div>`;
   }
   document.getElementById('pd-content').innerHTML=`
     ${media}
