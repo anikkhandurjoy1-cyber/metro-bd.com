@@ -681,6 +681,30 @@ function cld(url,w){
   if(url.includes('/upload/f_auto')) return url; // already optimized
   return url.replace('/upload/','/upload/f_auto,q_auto'+(w?',w_'+w:'')+'/');
 }
+
+// If a product has NO images but has a Cloudinary video, this pulls a still frame out of the
+// video (frame at second 0) so the grid card / order preview shows an actual preview instead
+// of a lonely 📦 emoji. Non-Cloudinary videos (like YouTube links) can't be thumbnailed by us,
+// so those still fall back to the emoji — no way around that without a full YouTube API call.
+function videoThumb(url,w){
+  if(typeof url!=='string' || !url.includes('res.cloudinary.com') || !url.includes('/video/upload/')) return '';
+  return url
+    .replace('/video/upload/','/video/upload/so_0,w_'+(w||400)+',q_auto,f_jpg/')
+    .replace(/\.(mp4|mov|webm|avi|mkv|m4v)(\?.*)?$/i,'.jpg$2');
+}
+
+// Given a product, return the best available thumbnail URL — video's first frame first
+// (so cards/previews show a live-looking video still), falling back to product images if
+// there's no video (or the video isn't a Cloudinary MP4 we can thumbnail). Returns '' when
+// neither is available.
+function productThumb(p,w){
+  if(!p) return '';
+  const vt = videoThumb(p.videoUrl, w);
+  if(vt) return vt;
+  if(p.images && p.images.length) return cld(p.images[0], w);
+  if(p.imageUrl) return cld(p.imageUrl, w);
+  return '';
+}
 let products=[], categories=[], settings={}, banners=[];
 let productsLoading=true, productsError=false;
 let cart=gd('mb_cart',[]);
@@ -1106,14 +1130,16 @@ function renderProducts(){
   empty.style.display='none';
   grid.innerHTML=f.map((p,i)=>{
     const disc=p.sale&&p.regular?Math.round((1-p.sale/p.regular)*100):0;
-    const mainImg = (p.images && p.images.length) ? p.images[0] : p.imageUrl;
+    // Video first frame first, product image second — that way a product with only a video
+    // still shows a real preview on the card, and a product with only an image works as before.
+    const mainImg = productThumb(p, 400);
     // First 6 cards (roughly what's visible without scrolling) load immediately at high
     // priority so the page feels instant; the rest stay lazy so they don't compete for
     // bandwidth until the customer scrolls near them.
     const imgAttrs = i<6 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"';
     return `<div class="pc" onclick="openDetail('${p._docId}')">
       <div class="pc-img"><div class="pc-img-3d">
-        ${mainImg?`<img src="${cld(mainImg,400)}" alt="${p.name}" ${imgAttrs} decoding="async" onerror="this.style.display='none'"><div class="pc-img-ph" style="display:none">📦</div>`:`<div class="pc-img-ph">📦</div>`}
+        ${mainImg?`<img src="${mainImg}" alt="${p.name}" ${imgAttrs} decoding="async" onerror="this.style.display='none'"><div class="pc-img-ph" style="display:none">📦</div>`:`<div class="pc-img-ph">📦</div>`}
         </div>
         ${p.videoUrl?'<div class="vid-badge">▶ Video</div>':''}
         ${disc>0?`<div class="disc-badge">-${disc}%</div>`:''}
@@ -1249,10 +1275,10 @@ function showExitOffer(){
   if(!p) return; // no discounted product to show — don't interrupt the customer for nothing
   sessionStorage.setItem('mb_exit_shown','1');
   const disc = Math.round((1-p.sale/p.regular)*100);
-  const mainImg = (p.images && p.images.length) ? p.images[0] : p.imageUrl;
+  const mainImg = productThumb(p, 600);
   document.getElementById('exit-offer-content').innerHTML = `
     <div style="position:relative;border-radius:14px;overflow:hidden;margin-bottom:12px;">
-      ${mainImg?`<img src="${cld(mainImg,600)}" alt="${p.name}" style="width:100%;height:200px;object-fit:cover;">`:`<div style="width:100%;height:200px;display:flex;align-items:center;justify-content:center;font-size:52px;background:#f3f3f3;">📦</div>`}
+      ${mainImg?`<img src="${mainImg}" alt="${p.name}" style="width:100%;height:200px;object-fit:cover;">`:`<div style="width:100%;height:200px;display:flex;align-items:center;justify-content:center;font-size:52px;background:#f3f3f3;">📦</div>`}
       <div style="position:absolute;top:10px;right:10px;background:#EF4444;color:#fff;font-weight:800;font-size:13px;padding:4px 10px;border-radius:20px;">-${disc}%</div>
     </div>
     <div style="font-weight:700;font-size:15px;margin-bottom:6px;">${p.name}</div>
@@ -1383,8 +1409,8 @@ function openOrderModal(docId){
   const p=curProd;
   if(p){
     document.getElementById('order-prod-preview').style.display='flex';
-    const mainImg = (p.images && p.images.length) ? p.images[0] : p.imageUrl;
-    const imgEl=document.getElementById('opp-img');imgEl.innerHTML=mainImg?`<img src="${cld(mainImg,120)}" alt="${p.name}">`:'📦';
+    const mainImg = productThumb(p, 120);
+    const imgEl=document.getElementById('opp-img');imgEl.innerHTML=mainImg?`<img src="${mainImg}" alt="${p.name}">`:'📦';
     document.getElementById('opp-name').textContent=p.name;
     document.getElementById('opp-price').textContent='৳'+(p.sale||p.regular||0).toLocaleString();
     document.getElementById('opp-old').textContent=p.sale&&p.regular&&p.sale<p.regular?'৳'+p.regular.toLocaleString():'';
@@ -1426,7 +1452,7 @@ function saveDraftOrder(){
   if(!name && !phone) return;
   const p=curProd;
   const now=new Date();
-  const mainImg = p ? ((p.images && p.images.length) ? p.images[0] : (p.imageUrl||'')) : '';
+  const mainImg = productThumb(p, 400);
   const draftData={
     name: name || '(নাম নেই)',
     phone: phone || '',
@@ -1475,7 +1501,7 @@ function submitOrder(){
   const del=getDelCharge();
   const sub=p?(p.sale||p.regular||0)*(curQty||1):0;
   const now=new Date();
-  const mainImg = p ? ((p.images && p.images.length) ? p.images[0] : (p.imageUrl||'')) : '';
+  const mainImg = productThumb(p, 400);
   // From this point on, no more Incomplete draft writes are allowed for this order —
   // this (plus the guard in saveDraftOrder) is what keeps a confirmed order from being
   // flipped back to "Incomplete" by a late draft save.
@@ -1531,7 +1557,7 @@ function submitOrder(){
 // ══════════════════════════════════
 function addCart(docId){
   const p=findProd(docId);if(!p)return;
-  const mainImg = (p.images && p.images.length) ? p.images[0] : (p.imageUrl||'');
+  const mainImg = productThumb(p, 200);
   const ex=cart.find(c=>c.id==docId);if(ex)ex.qty++;else cart.push({id:docId,name:p.name,price:p.sale||p.regular||0,imageUrl:mainImg,qty:1});
   sd('mb_cart',cart);updateCart();showToast('Cart-এ যোগ হয়েছে ✅');
   fireAddToCartEvent(p);
