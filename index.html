@@ -1636,36 +1636,94 @@ STORE_DOC.onSnapshot(doc=>{
   showToast('সেটিংস লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
 });
 
+// The admin panel keeps a single lightweight "snapshot" document containing every product in
+// one array. Reading this ONE doc is 5-10x faster than pulling the 48-doc collection over
+// mobile data, so we hit it first for the instant paint, then let the realtime collection
+// listener take over for live updates. Falls back gracefully if the snapshot doesn't exist yet.
+const PRODUCTS_SNAPSHOT_DOC = db.collection('metrobd').doc('products-snapshot');
+
 // Products: realtime listener (onSnapshot) instead of a one-time get(). This fixes the bug where
 // the page would show "No products found" on first load — get() could be slow/fail on weak mobile
 // connections with no loading indicator, so the empty-state showed before data ever arrived.
 // onSnapshot fires as soon as it has data (from cache or server) and keeps listening, so once the
 // connection succeeds the grid updates itself without needing a manual page refresh.
 let productsUnsub=null;
+let productsGotRealResponse=false; // flips true only after Firestore has answered with >=1 product
 function loadProducts(){
   // Cache-first: instantly render whatever we showed last time (from localStorage)
   // so the customer sees products the moment the page opens, instead of staring at
   // a spinner while Firestore fetches fresh data over the network. Firestore's
   // real (possibly updated) data then replaces it silently a moment later.
+  // GUARD: ignore an empty-array cache (`[]`). An earlier deploy or a transient Firestore quota
+  // dip could have written `[]` here, and using it would show "0 products" instantly even when
+  // Firestore is fine — treat empty-cache as no cache.
   try{
     const cached = localStorage.getItem('mb_products_cache');
     if(cached){
-      products = JSON.parse(cached);
-      productsLoading = false;
-      renderProducts();
-      renderCustomerBanners();
-      tryOpenDeepLinkProduct();
+      const parsed = JSON.parse(cached);
+      if(Array.isArray(parsed) && parsed.length){
+        products = parsed;
+        productsLoading = false;
+        renderProducts();
+        renderCustomerBanners();
+        tryOpenDeepLinkProduct();
+      }
     }
   }catch(e){}
   if(!products.length) { productsLoading=true; productsError=false; renderProducts(); }
-  if(productsUnsub) productsUnsub(); // avoid stacking duplicate listeners if retried manually
-  productsUnsub = PRODUCTS_COL.onSnapshot(snap=>{
-    products = snap.docs.map(d=>({...d.data(), _docId:d.id}));
-    productsLoading=false; productsError=false;
+
+  // FAST PATH — grab the single snapshot document. One tiny read finishes way before the
+  // full collection query would, so first-time visitors (no localStorage cache) see the shop
+  // grid within a few hundred ms instead of 2-4 seconds staring at a loader.
+  PRODUCTS_SNAPSHOT_DOC.get().then(doc=>{
+    if(!doc.exists) return;
+    const data = doc.data();
+    if(!data || !Array.isArray(data.products) || !data.products.length) return;
+    // If the full collection listener already delivered products (e.g. from Firestore's local
+    // cache), don't overwrite with a possibly-slightly-older snapshot — freshness wins.
+    if(productsGotRealResponse) return;
+    products = data.products;
+    productsLoading = false;
+    productsError = false;
     renderProducts();
     renderCustomerBanners();
     tryOpenDeepLinkProduct();
     try{ localStorage.setItem('mb_products_cache', JSON.stringify(products)); }catch(e){}
+  }).catch(err=>{
+    // Snapshot missing or unreadable — no problem, the collection listener below will fill in.
+    console.warn('Snapshot fast-path skipped:', err && err.message);
+  });
+
+  if(productsUnsub) productsUnsub(); // avoid stacking duplicate listeners if retried manually
+  productsUnsub = PRODUCTS_COL.onSnapshot(snap=>{
+    const fresh = snap.docs.map(d=>({...d.data(), _docId:d.id}));
+    // DEFENSIVE: never overwrite a non-empty local products list with an empty snapshot. This
+    // guards against Firestore returning empty during a rules/quota hiccup — the customer keeps
+    // seeing the last-known-good products instead of a suddenly blank page mid-ad-campaign.
+    if(!fresh.length && products.length){
+      console.warn('Firestore returned 0 products but local list has '+products.length+'; keeping existing list.');
+      return;
+    }
+    products = fresh;
+    productsLoading=false; productsError=false;
+    if(fresh.length) productsGotRealResponse = true;
+    renderProducts();
+    renderCustomerBanners();
+    tryOpenDeepLinkProduct();
+    // GUARD: only cache when we actually have products. Never cache `[]` — an empty cache
+    // would poison the next page load. (See the read guard above.)
+    if(fresh.length){
+      try{ localStorage.setItem('mb_products_cache', JSON.stringify(fresh)); }catch(e){}
+    }
+    // If Firestore came back empty on a fresh visit (no cache, no products) — that's almost
+    // certainly a config/quota issue, NOT truly zero products. Show the retry state so the
+    // customer at least has a button, and surface a toast so we notice fast.
+    if(!fresh.length && !productsGotRealResponse){
+      productsError=true;
+      renderProducts();
+      showToast('পণ্য লোড হচ্ছে না — একটু পর আবার চেষ্টা করুন','#EF4444');
+      console.error('CRITICAL: Firestore returned 0 products on first fetch. Check Firestore console / rules / quota.');
+    }
   }, err=>{
     console.error('Firebase products load error:',err);
     // If we already have cached products showing, a background refresh failure
