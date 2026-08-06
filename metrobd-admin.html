@@ -568,6 +568,14 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       </div>
       <div class="sc2" id="st-migration" style="display:none;">
         <div class="ss-title">⚙️ Data Migration (One-Time)</div>
+        <div style="background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.3);border-radius:10px;padding:14px;margin-bottom:16px;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:6px;">🔄 Customer Site Fast-Load Snapshot</div>
+          <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:10px;font-family:'Hind Siliguri';">
+            Customer site এই "snapshot" doc থেকে product ও banner instantly লোড করে। প্রতিবার admin login-এ auto refresh হয়, প্রোডাক্ট save করলেও। কখনো customer site slow দেখালে এই button-এ chapo।
+          </div>
+          <button class="btn btn-p btn-sm" onclick="manualRebuildSnapshot()" id="rebuild-snap-btn">🔄 Rebuild Snapshot Now</button>
+          <div id="rebuild-snap-status" style="margin-top:8px;font-size:12px;color:var(--muted);"></div>
+        </div>
         <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:14px;font-family:'Hind Siliguri';">
           এই টুলটি পুরনো স্টোরেজ structure (একটা ডকুমেন্টের ভিতরে সব অর্ডার/প্রোডাক্ট) থেকে নতুন structure-এ (আলাদা collection) ডেটা কপি করবে।<br><br>
           ✅ এটা <b>নিরাপদ</b> — পুরনো ডেটা ডিলিট হবে না, শুধু কপি হবে।<br>
@@ -1007,14 +1015,20 @@ function startRealtimeSync(){
 // Save small/shared data (categories, couriers, users, settings, banners) — NOT orders/products anymore
 function saveAll(){
   return STORE_DOC.set({categories,couriers,users,settings,banners},{merge:true})
+    .then(()=>{
+      // Any banner/category/settings edit needs to reach the customer site too, so refresh the
+      // snapshot doc — the customer site loads banners+categories+settings from there for speed.
+      updateProductsSnapshot();
+    })
     .catch(err=>{ console.error('Firebase save error:',err); toast('সেভ করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)'); throw err; });
 }
 
 // ══════════════════════════════════════════
-// PRODUCTS SNAPSHOT — one single Firestore doc that holds ALL products in one array. The
-// customer site reads this ONE tiny doc instead of doing a full 48-doc collection query, so
-// the shop grid paints 5-10x faster on mobile data. Called automatically after every product
-// add / edit / delete so the snapshot stays in sync.
+// PRODUCTS SNAPSHOT — one single Firestore doc that holds ALL customer-facing data (products,
+// banners, categories, settings) in one place. The customer site reads this ONE tiny doc
+// instead of doing a full 48-doc collection query + separate store-doc fetch, so the shop
+// grid AND the banner paint together in one round trip — 5-10x faster on mobile data.
+// Called automatically after every product / banner / settings save so the snapshot stays in sync.
 // ══════════════════════════════════════════
 const PRODUCTS_SNAPSHOT_DOC = db.collection('metrobd').doc('products-snapshot');
 let snapshotUpdatePending = false;
@@ -1025,8 +1039,11 @@ function updateProductsSnapshot(){
   snapshotUpdatePending = true;
   setTimeout(()=>{
     snapshotUpdatePending = false;
-    // Rebuild from the live products array — that's already the latest since saveProduct
-    // updates it before calling this helper.
+    if(!products || !products.length){
+      // Safety: don't wipe a good snapshot with empty products (products array might be empty
+      // for a split second right after login before the first fetch resolves).
+      return;
+    }
     PRODUCTS_SNAPSHOT_DOC.set({
       products: products.map(p=>{
         const c = {...p};
@@ -1034,6 +1051,9 @@ function updateProductsSnapshot(){
         delete c._docRef;
         return c;
       }),
+      banners: banners || [],
+      categories: categories || [],
+      settings: settings || {},
       updatedAt: firebase.firestore.Timestamp.now(),
       count: products.length
     }).catch(err=>{
@@ -1093,6 +1113,9 @@ function enterAdminPanel(d){
   loadProducts().then(()=>{
     updateCourierSelects();
     loadDashboard();
+    // Safety net: every admin login refreshes the customer-facing snapshot. This way even if
+    // Anik doesn't edit any product all day, the customer site's fast-path still has fresh data.
+    updateProductsSnapshot();
   });
 }
 
@@ -2768,6 +2791,41 @@ async function runImageMigration(){
   }
   btn.disabled = false;
   btn.textContent = '🖼️ Image Migration শুরু করুন';
+}
+
+// Manual rebuild — used by the button in Settings → Data Migration when Anik wants to force
+// a snapshot refresh right away (no debounce, no wait). Also refetches products so we're
+// definitely writing the latest state, not a stale in-memory copy.
+function manualRebuildSnapshot(){
+  const btn = document.getElementById('rebuild-snap-btn');
+  const status = document.getElementById('rebuild-snap-status');
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Rebuilding...'; }
+  if(status) status.textContent = 'প্রোডাক্ট ও ব্যানার fetch করা হচ্ছে...';
+  loadProducts().then(()=>{
+    if(status) status.textContent = 'Snapshot লেখা হচ্ছে...';
+    return PRODUCTS_SNAPSHOT_DOC.set({
+      products: products.map(p=>{
+        const c = {...p};
+        delete c._docId;
+        delete c._docRef;
+        return c;
+      }),
+      banners: banners || [],
+      categories: categories || [],
+      settings: settings || {},
+      updatedAt: firebase.firestore.Timestamp.now(),
+      count: products.length
+    });
+  }).then(()=>{
+    if(btn){ btn.disabled = false; btn.textContent = '🔄 Rebuild Snapshot Now'; }
+    if(status) status.innerHTML = '✅ Snapshot rebuild হয়েছে — ' + products.length + ' টা প্রোডাক্ট, ' + (banners||[]).length + ' টা banner। এখন customer site instantly লোড হবে।';
+    toast('Snapshot rebuild হয়েছে ✅');
+  }).catch(err=>{
+    console.error('Manual snapshot rebuild failed:', err);
+    if(btn){ btn.disabled = false; btn.textContent = '🔄 Rebuild Snapshot Now'; }
+    if(status) status.innerHTML = '❌ সমস্যা: ' + (err.message || 'unknown error');
+    toast('Snapshot rebuild ফেইল','var(--red)');
+  });
 }
 
 // ══════════════════════════════════════════
