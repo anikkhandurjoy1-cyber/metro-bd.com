@@ -642,12 +642,11 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-// Let Firestore cache data on the device (IndexedDB). On repeat visits this lets it
-// answer from local disk instantly instead of always waiting on the network, and it
-// works quietly alongside the localStorage cache used in loadProducts() below.
-try{
-  db.enablePersistence({synchronizeTabs:true}).catch(()=>{ /* unsupported browser or multiple tabs — safe to ignore, site still works without it */ });
-}catch(e){}
+// NOTE: we intentionally do NOT call enablePersistence() on the customer site. On fresh visits
+// (Incognito, new device, brand-new phone) the persistence-init step delays the first Firestore
+// operation by 500-1500ms while it sets up IndexedDB. Since we already keep our own localStorage
+// cache below AND we read the fast snapshot doc first, the added delay isn't worth it here.
+// The admin panel still uses persistence — repeat admin logins benefit from it.
 
 // Old single-document store: still used for categories & settings (small, slow-changing data).
 const STORE_DOC = db.collection('metrobd').doc('store');
@@ -1708,6 +1707,13 @@ function loadProducts(){
   if(productsUnsub) productsUnsub(); // avoid stacking duplicate listeners if retried manually
   productsUnsub = PRODUCTS_COL.onSnapshot(snap=>{
     const fresh = snap.docs.map(d=>({...d.data(), _docId:d.id}));
+    // GUARD 1: Firestore fires onSnapshot from local cache FIRST (before server responds) for
+    // fresh visitors — that first fire is empty since the cache is empty. Ignore it, we'll get
+    // the real server response in the next fire. Without this, the customer briefly saw an
+    // "error loading products" state during the ~1-2s until server responded.
+    if(!fresh.length && snap.metadata && snap.metadata.fromCache){
+      return;
+    }
     // DEFENSIVE: never overwrite a non-empty local products list with an empty snapshot. This
     // guards against Firestore returning empty during a rules/quota hiccup — the customer keeps
     // seeing the last-known-good products instead of a suddenly blank page mid-ad-campaign.
