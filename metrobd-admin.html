@@ -795,6 +795,11 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+// CRITICAL for Bangladesh mobile networks: many ISPs/carriers here silently block or throttle
+// Firestore's default WebSocket transport. Auto-detect long polling switches to plain HTTP
+// requests when WebSocket looks unhealthy, avoiding the 10-30s "cannot reach backend" hang.
+// Must be called before any other Firestore operation (including enablePersistence below).
+db.settings({ experimentalAutoDetectLongPolling: true });
 // Cache Firestore reads on-device so switching between tabs (Orders/Dashboard/Products) doesn't
 // always wait on a fresh network round-trip — repeat reads of the same data are served from local
 // cache instantly, then quietly refreshed in the background.
