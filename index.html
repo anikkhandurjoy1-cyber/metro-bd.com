@@ -642,6 +642,12 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+// CRITICAL for Bangladesh mobile networks: many ISPs/carriers here silently block or throttle
+// Firestore's default WebSocket transport (WebChannel). When that happens the SDK spins for
+// 10-30 seconds retrying WebSocket streams before giving up, and customers see a blank page.
+// Auto-detect long polling switches to plain HTTP requests the moment WebSocket looks unhealthy,
+// which turns "site never loads" into "site loads in a second or two" on those networks.
+db.settings({ experimentalAutoDetectLongPolling: true });
 // NOTE: we intentionally do NOT call enablePersistence() on the customer site. On fresh visits
 // (Incognito, new device, brand-new phone) the persistence-init step delays the first Firestore
 // operation by 500-1500ms while it sets up IndexedDB. Since we already keep our own localStorage
