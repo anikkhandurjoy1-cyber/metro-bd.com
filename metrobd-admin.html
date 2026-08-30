@@ -1299,46 +1299,42 @@ function loadDashboard(force){
   });
 }
 
-// Fetches TRUE all-time totals using Firestore count()/sum() aggregation queries.
-// - count() per status → real "Total / Processing / Payment Pending / On Hold / Canceled / Completed" numbers
-// - sum('total') on Completed+Delivered → real revenue
-// Each aggregation is 1 read regardless of how many orders match, so this stays cheap even
-// with thousands of orders. Cached for 3 minutes; new orders bust the cache via the new-order
-// watcher (which calls loadDashboard(true)). Sum aggregation is only available in Firebase SDK
-// 10.5+ — wrapped in try/catch; on failure, revenue falls back to sample-based sum in render.
+// Fetches TRUE all-time totals by paging through every order 500 at a time and counting
+// client-side. Works on any Firebase SDK version (unlike count()/sum() aggregation queries,
+// which aren't exposed on the compat Query in older SDKs). One page ≈ 500 reads; Anik's ~200
+// orders = 1 page. Safety cap at 20 000 orders. Cached 3 minutes; new orders bust the cache
+// via the new-order watcher (which calls loadDashboard(true)).
 function loadDashboardTrueCounts(force){
   if(!force && dashboardTrueTotals && (Date.now()-dashboardTrueCountsLoadedAt)<DASHBOARD_CACHE_MS) return;
-  const statuses = ['Processing','Payment Pending','On Hold','Canceled','Completed','Delivered'];
-  const jobs = [
-    ORDERS_COL.count().get().then(s=>({key:'total', v: s.data().count})),
-    ...statuses.map(status =>
-      ORDERS_COL.where('status','==',status).count().get()
-        .then(s=>({key:status, v: s.data().count}))
-        .catch(()=>({key:status, v: null}))
-    )
-  ];
-  // Revenue via sum aggregation. If the compat SDK on this Firebase version doesn't expose
-  // AggregateField.sum, this throws synchronously — caught and revenue stays null so render falls back.
-  try{
-    const AggregateField = firebase.firestore.AggregateField;
-    if(AggregateField && typeof AggregateField.sum === 'function'){
-      const revQ = ORDERS_COL.where('status','in',['Completed','Delivered']);
-      jobs.push(
-        revQ.aggregate({sum: AggregateField.sum('total')}).get()
-          .then(s=>({key:'revenue', v: s.data().sum || 0}))
-          .catch(err=>{ console.warn('Revenue sum failed:', err && err.message); return {key:'revenue', v: null}; })
-      );
-    }
-  }catch(e){ /* sum() not available → fall back to sample */ }
+  const PAGE = 500;
+  const SAFETY_CAP = 20000;
+  const c = {total:0, 'Processing':0, 'Payment Pending':0, 'On Hold':0, 'Canceled':0, 'Completed':0, 'Delivered':0, revenue:0};
 
-  Promise.all(jobs).then(results=>{
-    const t = {};
-    results.forEach(r=>{ t[r.key] = r.v; });
-    dashboardTrueTotals = t;
+  const fetchNextPage = (lastDoc)=>{
+    let q = ORDERS_COL.orderBy('createdAtTs','desc').limit(PAGE);
+    if(lastDoc) q = q.startAfter(lastDoc);
+    return q.get().then(snap=>{
+      if(snap.empty) return;
+      snap.docs.forEach(d=>{
+        const o = d.data();
+        c.total++;
+        if(o.status && c[o.status] !== undefined) c[o.status]++;
+        if(o.status === 'Completed' || o.status === 'Delivered') c.revenue += (o.total || 0);
+      });
+      if(snap.docs.length < PAGE) return; // last page
+      if(c.total >= SAFETY_CAP) return;
+      return fetchNextPage(snap.docs[snap.docs.length-1]);
+    });
+  };
+
+  fetchNextPage(null).then(()=>{
+    dashboardTrueTotals = { total: c.total, 'Processing': c['Processing'], 'Payment Pending': c['Payment Pending'],
+      'On Hold': c['On Hold'], 'Canceled': c['Canceled'], 'Completed': c['Completed'], 'Delivered': c['Delivered'], revenue: c.revenue };
     dashboardTrueCountsLoadedAt = Date.now();
     renderDashboard();
+    console.log('[Dashboard] True totals loaded:', dashboardTrueTotals);
   }).catch(err=>{
-    console.warn('True totals fetch failed, keeping sample-based numbers:', err && err.message);
+    console.warn('True totals paginated fetch failed, keeping sample-based numbers:', err && err.message);
   });
 }
 
