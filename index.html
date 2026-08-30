@@ -12,23 +12,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
-<!-- Meta Pixel Code -->
-<script>
-!function(f,b,e,v,n,t,s)
-{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-n.queue=[];t=b.createElement(e);t.async=!0;
-t.src=v;s=b.getElementsByTagName(e)[0];
-s.parentNode.insertBefore(t,s)}(window, document,'script',
-'https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', '1042999231989971');
-fbq('track', 'PageView');
-</script>
-<noscript><img height="1" width="1" style="display:none"
-src="https://www.facebook.com/tr?id=1042999231989971&ev=PageView&noscript=1"
-/></noscript>
-<!-- End Meta Pixel Code -->
+<!-- Meta / TikTok / GA pixels are now injected dynamically from admin Settings → Analytics.
+     Multiple pixel IDs (comma / newline separated) or multiple full snippets are supported —
+     see injectTrackingPixels() below. -->
 <style>
 :root{
   --primary:#0095B6;--primary2:#7B2FFF;--accent:#FF2D78;
@@ -1027,38 +1013,112 @@ function firePurchaseEvent(value, quantity){
   }catch(e){ console.error('TikTok pixel purchase event error:', e); }
 }
 
-// Injects the Facebook Pixel, TikTok Pixel, and Google Analytics code that the admin pastes
-// into Settings → Analytics/Pixel. Runs only once per page load (guarded by `pixelsInjected`)
-// even though `applySettings` itself may run multiple times (e.g. on every realtime settings
-// update) — re-injecting the same pixel script on every update would fire duplicate PageView
-// events and inflate Meta/TikTok's reported numbers.
+// Multi-pixel support: parses Facebook and TikTok pixel IDs out of whatever the admin pastes
+// into Settings → Analytics/Pixel — one full Meta snippet, several full snippets stacked, or
+// just bare pixel IDs separated by commas / newlines all work. The base fbevents.js (or
+// TikTok events.js) is loaded once, then every extracted ID is init'd. Meta and TikTok both
+// natively fan out subsequent track() calls to every initialized pixel, so ViewContent /
+// AddToCart / Purchase automatically hit all connected pixels without extra code.
+
+// Regex-extract every fbq('init','ID') from the pasted text. If none are found (admin pasted
+// just IDs, not full snippets), fall back to grabbing any 15–16 digit numbers on their own
+// (comma / newline / space separated). Kept separate from the init-scan so we don't accidentally
+// pull IDs out of noscript img URLs inside a full snippet.
+function extractFbPixelIds(text){
+  if(!text) return [];
+  const ids = new Set();
+  const initRegex = /fbq\s*\(\s*['"]init['"]\s*,\s*['"](\d{10,20})['"]/g;
+  let m;
+  while((m = initRegex.exec(text)) !== null) ids.add(m[1]);
+  if(ids.size === 0){
+    text.split(/[\s,;]+/).forEach(tok=>{ if(/^\d{15,16}$/.test(tok)) ids.add(tok); });
+  }
+  return Array.from(ids);
+}
+
+// TikTok pixel IDs are uppercase alphanumeric (typically ~20 chars) — extract from
+// ttq.load('ID') calls, or fall back to bare comma/newline separated IDs.
+function extractTikTokPixelIds(text){
+  if(!text) return [];
+  const ids = new Set();
+  const loadRegex = /ttq\.load\s*\(\s*['"]([A-Z0-9]{15,30})['"]/g;
+  let m;
+  while((m = loadRegex.exec(text)) !== null) ids.add(m[1]);
+  if(ids.size === 0){
+    text.split(/[\s,;]+/).forEach(tok=>{ if(/^[A-Z0-9]{15,30}$/.test(tok) && /[A-Z]/.test(tok)) ids.add(tok); });
+  }
+  return Array.from(ids);
+}
+
+// Loads the Facebook Pixel base library and creates the fbq queue. Idempotent — if fbq already
+// exists (some other snippet already ran), does nothing.
+function loadFbEventsBase(){
+  if(window.fbq) return;
+  !function(f,b,e,v,n,t,s){
+    if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s);
+  }(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+}
+
+// Loads the TikTok Pixel base library and creates the ttq queue. Idempotent.
+function loadTikTokEventsBase(){
+  if(window.ttq && window.ttq.load) return;
+  !function(w,d,t){
+    w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];
+    ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"];
+    ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};
+    for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);
+    ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};
+    ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=i,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var o=d.createElement("script");o.type="text/javascript",o.async=!0,o.src=i+"?sdkid="+e+"&lib="+t;var a=d.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};
+  }(window,document,'ttq');
+}
+
 function injectTrackingPixels(){
   if(pixelsInjected) return;
-  if(!settings.fbpixel && !settings.tkpixel && !settings.ga) return; // nothing to inject yet
+  if(!settings.fbpixel && !settings.tkpixel && !settings.ga) return;
   pixelsInjected = true;
-  [
-    {key:'fbpixel', id:'pixel-fb'},
-    {key:'tkpixel', id:'pixel-tk'},
-    {key:'ga', id:'pixel-ga'}
-  ].forEach(({key,id})=>{
-    const code = settings[key];
-    if(!code) return;
+
+  // ---- Facebook: multiple pixels ----
+  const fbIds = extractFbPixelIds(settings.fbpixel);
+  if(fbIds.length){
+    loadFbEventsBase();
+    fbIds.forEach(id=> fbq('init', id));
+    fbq('track', 'PageView');
+    // <noscript> fallback image for each pixel — for the small % of visitors with JS disabled.
+    fbIds.forEach(id=>{
+      const ns = document.createElement('noscript');
+      ns.innerHTML = '<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id='+id+'&ev=PageView&noscript=1"/>';
+      document.body.appendChild(ns);
+    });
+    console.log('[Meta Pixel] Initialized '+fbIds.length+' pixel(s):', fbIds.join(', '));
+  }
+
+  // ---- TikTok: multiple pixels ----
+  const tkIds = extractTikTokPixelIds(settings.tkpixel);
+  if(tkIds.length){
+    loadTikTokEventsBase();
+    tkIds.forEach(id=> ttq.load(id));
+    ttq.page();
+    console.log('[TikTok Pixel] Initialized '+tkIds.length+' pixel(s):', tkIds.join(', '));
+  }
+
+  // ---- Google Analytics (full snippet paste, unchanged) ----
+  if(settings.ga){
     const container = document.createElement('div');
-    container.innerHTML = code;
-    // Re-create any <script> tags found inside the pasted snippet — innerHTML alone does not
-    // execute scripts, so they must be rebuilt and appended to actually run.
+    container.innerHTML = settings.ga;
     container.querySelectorAll('script').forEach(oldScript=>{
       const newScript = document.createElement('script');
       Array.from(oldScript.attributes).forEach(attr=>newScript.setAttribute(attr.name, attr.value));
       newScript.text = oldScript.textContent;
       document.head.appendChild(newScript);
     });
-    // Any non-script markup in the pasted snippet (e.g. Meta's <noscript> pixel image fallback)
-    // gets appended to the body so it still renders.
     container.querySelectorAll('noscript').forEach(ns=>{
       document.body.appendChild(ns.cloneNode(true));
     });
-  });
+  }
 }
 
 // ══════════════════════════════════
