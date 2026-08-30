@@ -280,7 +280,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
     <div class="sc"><div class="sc-icon cy">💰</div><div class="sc-num" id="d-rev">৳0</div><div class="sc-lbl">Revenue</div></div>
     <div class="sc" onclick="sp('products')"><div class="sc-icon pk">📦</div><div class="sc-num" id="d-prods">0</div><div class="sc-lbl">Products</div></div>
   </div>
-  <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">💡 Dashboard-এর সংখ্যাগুলো সর্বশেষ ২০০টি অর্ডারের উপর ভিত্তি করে দেখানো হচ্ছে (পারফরম্যান্সের জন্য)। সম্পূর্ণ হিসাবের জন্য Order Report দেখুন।</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">💡 উপরের সংখ্যাগুলো সব অর্ডারের total। "আজকের রিপোর্ট" ও "Recent Orders" সর্বশেষ ২০০টি অর্ডারের সেট থেকে। সম্পূর্ণ হিসাবের জন্য Order Report দেখুন।</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
     <div class="tc">
       <div class="th"><div class="tt">আজকের রিপোর্ট</div></div>
@@ -547,9 +547,14 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       </div>
       <div class="sc2" id="st-analytics" style="display:none;">
         <div class="ss-title">Analytics & Pixel</div>
-        <div class="fg"><label>Facebook Pixel Code</label><textarea id="s-fbp" style="min-height:100px;" placeholder="<!-- Facebook Pixel -->"></textarea></div>
-        <div class="fg"><label>TikTok Pixel Code</label><textarea id="s-tkp" style="min-height:100px;" placeholder="<!-- TikTok Pixel -->"></textarea></div>
-        <div class="fg"><label>Google Analytics</label><textarea id="s-ga" style="min-height:80px;" placeholder="<!-- GA Code -->"></textarea></div>
+        <div style="background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.3);border-radius:10px;padding:12px;margin-bottom:14px;font-size:12px;line-height:1.7;font-family:'Hind Siliguri';">
+          💡 <b>Multi-Pixel Support:</b> Ekhon FB/TikTok box e <b>onek pixel</b> ekshathe boshate paren (5-6 ta bhi). Sudhu Pixel ID gulo comma diye likhe din — othoba Meta/TikTok theke pura snippet paste korun (jotogulo lagbe stack korun). Sob pixel e PageView, ViewContent, AddToCart, Purchase automatic fire hobe.
+          <br><br>
+          <b>Example (FB):</b> <code>1042999231989971, 2892908717736385</code>
+        </div>
+        <div class="fg"><label>Facebook Pixel IDs / Code (multiple supported)</label><textarea id="s-fbp" style="min-height:120px;" placeholder="1042999231989971, 2892908717736385&#10;&#10;OR paste full Meta Pixel snippet(s) — multiple can be stacked"></textarea></div>
+        <div class="fg"><label>TikTok Pixel IDs / Code (multiple supported)</label><textarea id="s-tkp" style="min-height:120px;" placeholder="XXXXXXXXXXXXXXXXXX, YYYYYYYYYYYYYYYYYY&#10;&#10;OR paste full TikTok Pixel snippet(s)"></textarea></div>
+        <div class="fg"><label>Google Analytics (paste full snippet)</label><textarea id="s-ga" style="min-height:80px;" placeholder="<!-- GA Code -->"></textarea></div>
         <button class="btn btn-p" onclick="saveS('analytics')">✅ Save</button>
       </div>
       <div class="sc2" id="st-blacklist" style="display:none;">
@@ -858,6 +863,13 @@ let dataLoaded = false;
 // Dashboard-only aggregate counters (computed from a capped recent-orders fetch, NOT every order ever placed)
 let dashboardOrdersSample = []; // last 500 orders, used only for dashboard stat cards + recent list
 const DASHBOARD_SAMPLE_LIMIT = 200; // smaller sample = much faster dashboard on mobile data
+
+// TRUE all-time totals via Firestore count()/sum() aggregation queries — 1 read per aggregation
+// regardless of match count, so cheap even when the store has thousands of orders. Sample above
+// stays for Today's Report + Recent Orders (things that need actual documents, not just counts).
+// null until first successful fetch; renderDashboard falls back to sample counts while null.
+let dashboardTrueTotals = null;
+let dashboardTrueCountsLoadedAt = 0;
 
 // Orders page pagination state
 const ORDERS_PAGE_SIZE = 25; // smaller pages load noticeably faster on mobile
@@ -1242,6 +1254,7 @@ function reviveTs(o){
 function loadDashboard(force){
   if(!force && dashboardOrdersSample.length && (Date.now()-dashboardLastLoadedAt)<DASHBOARD_CACHE_MS){
     renderDashboard();
+    loadDashboardTrueCounts(force); // refresh true totals in the background — cheap
     return;
   }
   // localStorage cache: paint the dashboard instantly from the last successful fetch — even
@@ -1280,23 +1293,85 @@ function loadDashboard(force){
       if(!dashboardOrdersSample.length) renderDashboard();
       toast('ড্যাশবোর্ড লোড করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)');
     });
+    // Kick off the true-totals fetch in parallel with the sample fetch — independent, so
+    // stat cards update as soon as the count aggregation returns even if the sample is still loading.
+    loadDashboardTrueCounts(force);
+  });
+}
+
+// Fetches TRUE all-time totals using Firestore count()/sum() aggregation queries.
+// - count() per status → real "Total / Processing / Payment Pending / On Hold / Canceled / Completed" numbers
+// - sum('total') on Completed+Delivered → real revenue
+// Each aggregation is 1 read regardless of how many orders match, so this stays cheap even
+// with thousands of orders. Cached for 3 minutes; new orders bust the cache via the new-order
+// watcher (which calls loadDashboard(true)). Sum aggregation is only available in Firebase SDK
+// 10.5+ — wrapped in try/catch; on failure, revenue falls back to sample-based sum in render.
+function loadDashboardTrueCounts(force){
+  if(!force && dashboardTrueTotals && (Date.now()-dashboardTrueCountsLoadedAt)<DASHBOARD_CACHE_MS) return;
+  const statuses = ['Processing','Payment Pending','On Hold','Canceled','Completed','Delivered'];
+  const jobs = [
+    ORDERS_COL.count().get().then(s=>({key:'total', v: s.data().count})),
+    ...statuses.map(status =>
+      ORDERS_COL.where('status','==',status).count().get()
+        .then(s=>({key:status, v: s.data().count}))
+        .catch(()=>({key:status, v: null}))
+    )
+  ];
+  // Revenue via sum aggregation. If the compat SDK on this Firebase version doesn't expose
+  // AggregateField.sum, this throws synchronously — caught and revenue stays null so render falls back.
+  try{
+    const AggregateField = firebase.firestore.AggregateField;
+    if(AggregateField && typeof AggregateField.sum === 'function'){
+      const revQ = ORDERS_COL.where('status','in',['Completed','Delivered']);
+      jobs.push(
+        revQ.aggregate({sum: AggregateField.sum('total')}).get()
+          .then(s=>({key:'revenue', v: s.data().sum || 0}))
+          .catch(err=>{ console.warn('Revenue sum failed:', err && err.message); return {key:'revenue', v: null}; })
+      );
+    }
+  }catch(e){ /* sum() not available → fall back to sample */ }
+
+  Promise.all(jobs).then(results=>{
+    const t = {};
+    results.forEach(r=>{ t[r.key] = r.v; });
+    dashboardTrueTotals = t;
+    dashboardTrueCountsLoadedAt = Date.now();
+    renderDashboard();
+  }).catch(err=>{
+    console.warn('True totals fetch failed, keeping sample-based numbers:', err && err.message);
   });
 }
 
 function renderDashboard(){
   const today = localDate();
   const src = dashboardOrdersSample;
-  const cnt = s => src.filter(o=>s==='all'||o.status===s).length;
-  const vals = [src.length, cnt('Processing'), cnt('Payment Pending'), cnt('On Hold'), cnt('Canceled'), cnt('Completed')];
+  const t = dashboardTrueTotals; // TRUE all-time counts + revenue (null until first aggregation returns)
+
+  // Stat cards prefer TRUE totals (real numbers, no "+"); fall back to sample counts (with "+"
+  // when sample is capped) only while true totals haven't returned yet.
+  const sampleCnt = s => src.filter(o=>o.status===s).length;
+  const total = t ? t.total : src.length;
+  const proc  = (t && t['Processing']     != null) ? t['Processing']     : sampleCnt('Processing');
+  const pay   = (t && t['Payment Pending']!= null) ? t['Payment Pending']: sampleCnt('Payment Pending');
+  const hold  = (t && t['On Hold']        != null) ? t['On Hold']        : sampleCnt('On Hold');
+  const can   = (t && t['Canceled']       != null) ? t['Canceled']       : sampleCnt('Canceled');
+  const comp  = (t && t['Completed']      != null) ? t['Completed']      : sampleCnt('Completed');
+  const vals = [total, proc, pay, hold, can, comp];
+  // Suffix only when we're showing sample-based numbers AND the sample is capped.
+  const sampleCapped = !t && src.length>=DASHBOARD_SAMPLE_LIMIT;
   ['total','proc','pay','hold','can','comp'].forEach((id,i)=>{
-    document.getElementById('d-'+id).textContent = vals[i] + (src.length>=DASHBOARD_SAMPLE_LIMIT?'+':'');
+    document.getElementById('d-'+id).textContent = vals[i] + (sampleCapped?'+':'');
   });
-  const rev = src.filter(o=>['Completed','Delivered'].includes(o.status)).reduce((a,o)=>a+(o.total||0),0);
-  document.getElementById('d-rev').textContent = '৳'+rev.toLocaleString()+(src.length>=DASHBOARD_SAMPLE_LIMIT?'+':'');
+
+  // Revenue: prefer true sum aggregation; fall back to summing Completed+Delivered from the sample.
+  const trueRev = t && t.revenue!=null ? t.revenue : null;
+  const rev = trueRev!=null ? trueRev : src.filter(o=>['Completed','Delivered'].includes(o.status)).reduce((a,o)=>a+(o.total||0),0);
+  document.getElementById('d-rev').textContent = '৳'+rev.toLocaleString()+(trueRev==null && src.length>=DASHBOARD_SAMPLE_LIMIT?'+':'');
+
   document.getElementById('d-prods').textContent = products.length;
-  document.getElementById('all-badge').textContent = src.length+(src.length>=DASHBOARD_SAMPLE_LIMIT?'+':'');
+  document.getElementById('all-badge').textContent = total + (sampleCapped?'+':'');
   const inc = src.filter(o=>o.status==='Incomplete').length;
-  document.getElementById('inc-badge').textContent = inc + (src.length>=DASHBOARD_SAMPLE_LIMIT?'+':'');
+  document.getElementById('inc-badge').textContent = inc + (sampleCapped?'+':'');
   // The 500-order sample above might miss older incomplete drafts, so also fetch the real
   // incomplete count directly (cheap query — Incomplete orders are usually a small set).
   ORDERS_COL.where('status','==','Incomplete').limit(200).get().then(snap=>{
