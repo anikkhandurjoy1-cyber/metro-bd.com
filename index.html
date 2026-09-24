@@ -629,54 +629,36 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 // CRITICAL for Bangladesh mobile networks: many ISPs/carriers here silently block or throttle
-// Firestore's default WebSocket transport (WebChannel). When that happens the SDK spins for
-// 10-30 seconds retrying WebSocket streams before giving up, and customers see a blank page.
-// Auto-detect long polling switches to plain HTTP requests the moment WebSocket looks unhealthy,
-// which turns "site never loads" into "site loads in a second or two" on those networks.
+// Firestore's default WebSocket transport (WebChannel). Auto-detect long polling switches to
+// plain HTTP requests the moment WebSocket looks unhealthy.
 db.settings({ experimentalAutoDetectLongPolling: true });
-// NOTE: we intentionally do NOT call enablePersistence() on the customer site. On fresh visits
-// (Incognito, new device, brand-new phone) the persistence-init step delays the first Firestore
-// operation by 500-1500ms while it sets up IndexedDB. Since we already keep our own localStorage
-// cache below AND we read the fast snapshot doc first, the added delay isn't worth it here.
-// The admin panel still uses persistence — repeat admin logins benefit from it.
 
 // Old single-document store: still used for categories & settings (small, slow-changing data).
 const STORE_DOC = db.collection('metrobd').doc('store');
-// Products live in their own collection now — customer site only ever reads from here,
-// never touching the (potentially large) orders collection.
+// Products live in their own collection.
 const PRODUCTS_COL = db.collection('metrobd_products');
-// New orders go straight into their own collection as individual documents instead of being
-// appended to one big array inside STORE_DOC. This avoids ever hitting Firestore's 1MB document
-// limit as order volume grows, and avoids customers' write requests competing for the same doc.
+// Each order is its own document.
 const ORDERS_COL = db.collection('metrobd_orders');
 
 // Cart stays local per-device (LocalStorage is fine for this)
 const gd=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d;}catch(e){return d;}};
 const sd=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 
-// Local (Bangladesh) date as YYYY-MM-DD. toISOString() gives the UTC date, and Bangladesh is
-// UTC+6 — between 12 AM and 6 AM local it would return yesterday, which made after-midnight
-// orders land on the previous day's admin report. Always use local time for order dates.
+// Local (Bangladesh) date as YYYY-MM-DD (toISOString gives UTC → wrong day after midnight BD time).
 function localDate(d){
   const dt = d || new Date();
   const pad = n => String(n).padStart(2,'0');
   return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());
 }
 
-// Cloudinary URL optimizer: inserts f_auto,q_auto,w_<width> into a Cloudinary URL so the CDN
-// serves a right-sized, modern-format (WebP/AVIF) version instead of the full-size original —
-// thumbnails become 5-10x smaller, which is the single biggest speed win on mobile data.
-// Non-Cloudinary URLs pass through untouched.
+// Cloudinary URL optimizer: right-sized, modern-format images. Non-Cloudinary URLs pass through.
 function cld(url,w){
   if(typeof url!=='string' || !url.includes('res.cloudinary.com') || !url.includes('/upload/')) return url;
   if(url.includes('/upload/f_auto')) return url; // already optimized
   return url.replace('/upload/','/upload/f_auto,q_auto'+(w?',w_'+w:'')+'/');
 }
 
-// If a product has NO images but has a Cloudinary video, this pulls a still frame out of the
-// video (frame at second 0) so the grid card / order preview shows an actual preview instead
-// of a lonely 📦 emoji. Non-Cloudinary videos (like YouTube links) can't be thumbnailed by us,
-// so those still fall back to the emoji — no way around that without a full YouTube API call.
+// Still frame from a Cloudinary video (so video-only products show a preview on cards).
 function videoThumb(url,w){
   if(typeof url!=='string' || !url.includes('res.cloudinary.com') || !url.includes('/video/upload/')) return '';
   return url
@@ -684,10 +666,7 @@ function videoThumb(url,w){
     .replace(/\.(mp4|mov|webm|avi|mkv|m4v)(\?.*)?$/i,'.jpg$2');
 }
 
-// Given a product, return the best available thumbnail URL — video's first frame first
-// (so cards/previews show a live-looking video still), falling back to product images if
-// there's no video (or the video isn't a Cloudinary MP4 we can thumbnail). Returns '' when
-// neither is available.
+// Best available thumbnail: video first frame, then product images.
 function productThumb(p,w){
   if(!p) return '';
   const vt = videoThumb(p.videoUrl, w);
@@ -700,13 +679,10 @@ let products=[], categories=[], settings={}, banners=[];
 let productsLoading=true, productsError=false;
 let cart=gd('mb_cart',[]);
 let curCat='all', curProd=null, curQty=1, delType='outside', selPayType='cod';
-// Tracks the Firestore doc ID of the in-progress "draft" order created from partially-filled
-// form fields, so the admin can see (and follow up with) visitors who start an order but never
-// finish it. Reset to null whenever the order modal is opened fresh for a new product/visit.
+// Draft ("Incomplete") order tracking.
 let draftOrderId = null;
 let draftSaveTimer = null;
-// Set to true the moment the customer presses "অর্ডার কনফার্ম করুন" — blocks any late/pending
-// draft ("Incomplete") saves from overwriting the confirmed order's status back to Incomplete.
+// Blocks late draft saves from flipping a confirmed order back to Incomplete.
 let orderSubmitted = false;
 
 // ══════════════════════════════════
@@ -761,9 +737,7 @@ updTimer();setInterval(updTimer,1000);
 })();
 
 // ══════════════════════════════════
-// BANNER — slides are rendered dynamically from admin-managed banner data (see `banners`
-// array, loaded from Firestore). Falls back to one simple default slide if the admin hasn't
-// added any banners yet, so the homepage never looks broken/empty.
+// BANNER
 // ══════════════════════════════════
 let bannerIdx=0;
 let TOTAL_BANNERS=1;
@@ -775,7 +749,6 @@ function renderCustomerBanners(){
   const dotsWrap = document.getElementById('banner-dots');
 
   if(!activeBanners.length){
-    // No banners configured in admin yet — show one simple default slide instead of a blank space.
     slidesWrap.innerHTML = `<div class="banner-slide active" data-i="0" style="background:linear-gradient(135deg,var(--primary2),var(--primary));">
       <div class="banner-slide-overlay"></div>
       <div class="b-content">
@@ -800,8 +773,6 @@ function renderCustomerBanners(){
       if(imgs.length===1){
         bg = `background-image:url('${cld(imgs[0],1200)}');background-size:100% 100%;background-repeat:no-repeat;background-position:center;background-color:#0d0d14;`;
       } else {
-        // Multiple images on this one banner: render them as stacked layers that cross-fade
-        // into each other automatically — a small slideshow living inside a single slide.
         mediaHtml = `<div class="banner-mini-slideshow" data-imgcount="${imgs.length}">
           ${imgs.map((url,j)=>`<div class="bms-layer${j===0?' active':''}" style="background-image:url('${cld(url,1200)}');"></div>`).join('')}
         </div>`;
@@ -832,13 +803,8 @@ function renderCustomerBanners(){
   }
   goBanner(0);
 
-  // Start each slide's internal mini-slideshow (for banners with multiple images) independently
-  // of the main banner rotation — each cycles through its own images every 2.5s.
   startBannerMiniSlideshows();
 
-  // Build the subtle depth-tunnel using all banner images (image-type banners only —
-  // gradient/video slides don't have a photo to float). Falls back to product photos if there
-  // aren't enough banner images, so the tunnel still looks full even with just 1-2 banners.
   let tunnelImages = [];
   activeBanners.filter(b=>b.type==='image').forEach(b=>{
     const imgs = (b.images && b.images.length) ? b.images : (b.url ? [b.url] : []);
@@ -854,9 +820,6 @@ function renderCustomerBanners(){
   renderTunnelCards(tunnelImages);
 }
 
-// Each banner slide that has multiple images runs its own independent cross-fade cycle
-// (every 2.5s), separate from the main banner rotation timer. Intervals are cleared and
-// restarted whenever banners re-render, so they never pile up or leak.
 let bannerMiniTimers = [];
 function startBannerMiniSlideshows(){
   bannerMiniTimers.forEach(t=>clearInterval(t));
@@ -874,9 +837,6 @@ function startBannerMiniSlideshows(){
   });
 }
 
-// Floating thumbnail cards confined to the far left/right edges of the banner (roughly the
-// outer 16% on each side), so they add ambient depth without ever overlapping the centered
-// banner text/content. Each card drifts gently up and down.
 function renderTunnelCards(images){
   const tunnel = document.getElementById('banner-tunnel');
   if(!images.length){ tunnel.innerHTML=''; return; }
@@ -890,7 +850,7 @@ function renderTunnelCards(images){
   ];
   tunnel.innerHTML = images.slice(0,positions.length).map((url,i)=>{
     const pos = positions[i];
-    const edgeOffset = (i%3)*6; // stagger how far into the edge zone each card sits
+    const edgeOffset = (i%3)*6;
     const sideStyle = pos.side==='left' ? `left:${2+edgeOffset}%;` : `right:${2+edgeOffset}%;`;
     const delay = (i*1.1).toFixed(1);
     return `<div class="tunnel-card" style="
@@ -902,9 +862,6 @@ function renderTunnelCards(images){
   }).join('');
 }
 
-// Simple, smooth crossfade between banner slides (no carousel/3D transform) — the active
-// slide fades+scales in over the previous one, which is what gives the modern "hero banner"
-// feel used by big e-commerce sites, instead of a side-scrolling card carousel.
 function goBanner(i){
   bannerIdx=(i+TOTAL_BANNERS)%TOTAL_BANNERS;
   document.querySelectorAll('.banner-slide').forEach((s,j)=>{
@@ -959,71 +916,67 @@ function applySettings(){
   if(settings.tiktok){document.getElementById('f-tt').href=settings.tiktok;document.getElementById('c-tt').href=settings.tiktok;}
   if(settings.yt){document.getElementById('f-yt').href=settings.yt;document.getElementById('c-yt').href=settings.yt;}
   if(settings.footer) document.getElementById('f-copy').textContent=settings.footer;
-  if(settings.dhaka_outside) document.getElementById('del-outside-p').textContent=settings.dhaka_outside+' টাকা';
-  if(settings.dhaka_inside) document.getElementById('del-inside-p').textContent=settings.dhaka_inside+' টাকা';
+  // FIX: these delivery-price elements don't exist on this page. Without the null-check, saving a
+  // Delivery Charge in admin made this line throw, applySettings() stopped here, and the FB/TikTok
+  // pixels below NEVER loaded — all ad tracking went dead.
+  const _delOut=document.getElementById('del-outside-p');if(settings.dhaka_outside&&_delOut)_delOut.textContent=settings.dhaka_outside+' টাকা';
+  const _delIn=document.getElementById('del-inside-p');if(settings.dhaka_inside&&_delIn)_delIn.textContent=settings.dhaka_inside+' টাকা';
   injectTrackingPixels();
 }
 
-// Fires a ViewContent event when a visitor opens a product's detail view, and an AddToCart
-// event when they add something to the cart. These earlier-funnel signals help Meta/TikTok's
-// algorithm learn faster (it has more data points to optimize against than Purchase alone),
-// and they power retargeting audiences like "people who viewed but didn't buy."
+// ViewContent / AddToCart / Purchase events. TikTok needs a `contents` array (content_id, name,
+// price, quantity) + content_type + value — without them it can't optimize for Value/ROAS and
+// shows no product-wise report. FB gets content_type + string content_ids too.
 function fireViewContentEvent(p){
   const value = p.sale||p.regular||0;
+  const contents = [{content_id:String(p.id), content_name:p.name, price:value, quantity:1}];
   try{
     if(typeof fbq === 'function'){
-      fbq('track', 'ViewContent', {content_name: p.name, content_ids: [p.id], value, currency: 'BDT'});
+      fbq('track', 'ViewContent', {content_name:p.name, content_ids:[String(p.id)], content_type:'product', value, currency:'BDT'});
     }
   }catch(e){ console.error('FB pixel viewcontent event error:', e); }
   try{
     if(typeof ttq !== 'undefined' && ttq.track){
-      ttq.track('ViewContent', {content_name: p.name, content_id: String(p.id), value, currency: 'BDT'});
+      ttq.track('ViewContent', {contents, content_type:'product', value, currency:'BDT'});
     }
   }catch(e){ console.error('TikTok pixel viewcontent event error:', e); }
 }
 
 function fireAddToCartEvent(p){
   const value = p.sale||p.regular||0;
+  const contents = [{content_id:String(p.id), content_name:p.name, price:value, quantity:1}];
   try{
     if(typeof fbq === 'function'){
-      fbq('track', 'AddToCart', {content_name: p.name, content_ids: [p.id], value, currency: 'BDT'});
+      fbq('track', 'AddToCart', {content_name:p.name, content_ids:[String(p.id)], content_type:'product', value, currency:'BDT'});
     }
   }catch(e){ console.error('FB pixel addtocart event error:', e); }
   try{
     if(typeof ttq !== 'undefined' && ttq.track){
-      ttq.track('AddToCart', {content_name: p.name, content_id: String(p.id), value, currency: 'BDT'});
+      ttq.track('AddToCart', {contents, content_type:'product', value, currency:'BDT'});
     }
   }catch(e){ console.error('TikTok pixel addtocart event error:', e); }
 }
 
-// Fires a Purchase conversion event to whichever ad pixels are installed (Meta's fbq and/or
-// TikTok's ttq). Both libraries attach themselves to `window` once their snippet runs, so we
-// guard each call with a typeof check — if the admin hasn't pasted a pixel code, these
-// functions simply won't exist yet, and we skip silently rather than throwing an error.
-function firePurchaseEvent(value, quantity){
+// Purchase — now takes the product as 3rd argument so TikTok gets content_id/name/price.
+function firePurchaseEvent(value, quantity, prod){
+  const safeVal = value||0;
+  const safeQty = quantity||1;
+  const contents = prod
+    ? [{content_id:String(prod.id), content_name:prod.name, price:prod.sale||prod.regular||0, quantity:safeQty}]
+    : [];
   try{
     if(typeof fbq === 'function'){
-      fbq('track', 'Purchase', {value: value||0, currency: 'BDT', num_items: quantity||1});
+      fbq('track', 'Purchase', {value:safeVal, currency:'BDT', num_items:safeQty, content_type:'product', content_ids:contents.map(c=>c.content_id)});
     }
   }catch(e){ console.error('FB pixel purchase event error:', e); }
   try{
     if(typeof ttq !== 'undefined' && ttq.track){
-      ttq.track('CompletePayment', {value: value||0, currency: 'BDT', quantity: quantity||1});
+      ttq.track('CompletePayment', {contents, content_type:'product', value:safeVal, currency:'BDT', quantity:safeQty});
     }
   }catch(e){ console.error('TikTok pixel purchase event error:', e); }
 }
 
-// Multi-pixel support: parses Facebook and TikTok pixel IDs out of whatever the admin pastes
-// into Settings → Analytics/Pixel — one full Meta snippet, several full snippets stacked, or
-// just bare pixel IDs separated by commas / newlines all work. The base fbevents.js (or
-// TikTok events.js) is loaded once, then every extracted ID is init'd. Meta and TikTok both
-// natively fan out subsequent track() calls to every initialized pixel, so ViewContent /
-// AddToCart / Purchase automatically hit all connected pixels without extra code.
-
-// Regex-extract every fbq('init','ID') from the pasted text. If none are found (admin pasted
-// just IDs, not full snippets), fall back to grabbing any 15–16 digit numbers on their own
-// (comma / newline / space separated). Kept separate from the init-scan so we don't accidentally
-// pull IDs out of noscript img URLs inside a full snippet.
+// Multi-pixel support: parses FB / TikTok pixel IDs from whatever the admin pastes.
 function extractFbPixelIds(text){
   if(!text) return [];
   const ids = new Set();
@@ -1036,8 +989,6 @@ function extractFbPixelIds(text){
   return Array.from(ids);
 }
 
-// TikTok pixel IDs are uppercase alphanumeric (typically ~20 chars) — extract from
-// ttq.load('ID') calls, or fall back to bare comma/newline separated IDs.
 function extractTikTokPixelIds(text){
   if(!text) return [];
   const ids = new Set();
@@ -1050,8 +1001,6 @@ function extractTikTokPixelIds(text){
   return Array.from(ids);
 }
 
-// Loads the Facebook Pixel base library and creates the fbq queue. Idempotent — if fbq already
-// exists (some other snippet already ran), does nothing.
 function loadFbEventsBase(){
   if(window.fbq) return;
   !function(f,b,e,v,n,t,s){
@@ -1063,7 +1012,6 @@ function loadFbEventsBase(){
   }(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
 }
 
-// Loads the TikTok Pixel base library and creates the ttq queue. Idempotent.
 function loadTikTokEventsBase(){
   if(window.ttq && window.ttq.load) return;
   !function(w,d,t){
@@ -1087,7 +1035,6 @@ function injectTrackingPixels(){
     loadFbEventsBase();
     fbIds.forEach(id=> fbq('init', id));
     fbq('track', 'PageView');
-    // <noscript> fallback image for each pixel — for the small % of visitors with JS disabled.
     fbIds.forEach(id=>{
       const ns = document.createElement('noscript');
       ns.innerHTML = '<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id='+id+'&ev=PageView&noscript=1"/>';
@@ -1137,8 +1084,6 @@ function filterCat(cat,el){
   document.querySelectorAll('.cat-chip').forEach(c=>c.classList.remove('active'));
   el.classList.add('active');
   renderProducts();
-  // Reflect the selected category in the URL so a category can be linked/shared directly —
-  // e.g. metro-bd.com/index.html?category=Mobile Accessories opens straight into that category.
   try{
     const url=new URL(window.location.href);
     if(cat==='all'){
@@ -1153,8 +1098,6 @@ function filterCat(cat,el){
   }catch(e){}
 }
 
-// If the page is loaded with ?category=NAME in the URL (e.g. from a Facebook ad targeting one
-// category), select that category chip automatically once categories have loaded.
 let _catDeepLinkHandled=false;
 function tryApplyDeepLinkCategory(){
   if(_catDeepLinkHandled) return;
@@ -1173,13 +1116,11 @@ function tryApplyDeepLinkCategory(){
 // ══════════════════════════════════
 function renderProducts(){
   const grid=document.getElementById('products-grid'),empty=document.getElementById('p-empty'),loadingEl=document.getElementById('p-loading'),retryEl=document.getElementById('p-retry');
-  // Still waiting on the first Firestore response — show a spinner, not "no products found".
   if(productsLoading){
     grid.innerHTML='';empty.style.display='none';retryEl.style.display='none';loadingEl.style.display='block';
     document.getElementById('p-count-lbl').textContent='';
     return;
   }
-  // Fetch failed (e.g. no internet) — show a retry option instead of silently looking empty.
   if(productsError){
     grid.innerHTML='';empty.style.display='none';loadingEl.style.display='none';retryEl.style.display='block';
     document.getElementById('p-count-lbl').textContent='';
@@ -1195,12 +1136,7 @@ function renderProducts(){
   empty.style.display='none';
   grid.innerHTML=f.map((p,i)=>{
     const disc=p.sale&&p.regular?Math.round((1-p.sale/p.regular)*100):0;
-    // Video first frame first, product image second — that way a product with only a video
-    // still shows a real preview on the card, and a product with only an image works as before.
     const mainImg = productThumb(p, 400);
-    // First 6 cards (roughly what's visible without scrolling) load immediately at high
-    // priority so the page feels instant; the rest stay lazy so they don't compete for
-    // bandwidth until the customer scrolls near them.
     const imgAttrs = i<6 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"';
     return `<div class="pc" onclick="openDetail('${p._docId}')">
       <div class="pc-img"><div class="pc-img-3d">
@@ -1225,7 +1161,7 @@ function renderProducts(){
 // ══════════════════════════════════
 function findProd(docId){ return products.find(x=>x._docId===docId); }
 
-let pdImages = []; // images for the currently-open product detail gallery
+let pdImages = [];
 
 function openDetail(docId){
   const p=findProd(docId);if(!p)return;
@@ -1237,7 +1173,6 @@ function openDetail(docId){
   const hasVideo = !!p.videoUrl;
   const hasImages = pdImages.length > 0;
 
-  // Video block (if any) — always at the top so the customer sees it first.
   if(hasVideo){
     const url = p.videoUrl;
     const isYt = url.includes('youtube.com') || url.includes('youtu.be');
@@ -1245,17 +1180,13 @@ function openDetail(docId){
       const v = url.replace('watch?v=','embed/').replace('youtu.be/','www.youtube.com/embed/');
       media += `<iframe class="pd-vid" src="${v}" allowfullscreen></iframe>`;
     } else {
-      // Direct video file (Cloudinary MP4 etc.) — first product image (if any) is used as the poster
-      // so the player shows a real preview frame before playback.
       const poster = hasImages ? cld(pdImages[0],800) : '';
       media += `<video class="pd-vid" src="${url}" ${poster?`poster="${poster}"`:''} controls playsinline preload="metadata" style="background:#000;object-fit:contain;"></video>`;
     }
   }
 
-  // Image block — behavior depends on whether a video is also being shown.
   if(hasImages){
     if(!hasVideo){
-      // No video → the classic big main image + thumbnail strip that swaps the main.
       media += `<div class="pd-img" id="pd-main-img" onclick="openImageZoom(0)"><img src="${cld(pdImages[0],800)}" alt="${p.name}"><span class="pd-zoom-hint">🔍</span></div>`;
       if(pdImages.length>1){
         media += `<div style="display:flex;gap:6px;margin-bottom:11px;overflow-x:auto;">${pdImages.map((url,i)=>
@@ -1264,8 +1195,6 @@ function openDetail(docId){
           </div>`).join('')}</div>`;
       }
     } else {
-      // Video is already the main viewer → show every image as a bigger tappable tile below it.
-      // Tapping a tile opens the full-screen zoom lightbox for that image (not the video).
       media += `<div style="font-size:12px;color:var(--muted);font-family:'Hind Siliguri';margin:8px 0 6px;">📷 আরও ছবি — ট্যাপ করে বড় করে দেখুন</div>`;
       media += `<div style="display:flex;gap:8px;margin-bottom:11px;overflow-x:auto;padding-bottom:4px;">${pdImages.map((url,i)=>
         `<div onclick="openImageZoom(${i})" style="width:88px;height:88px;flex-shrink:0;border-radius:10px;overflow:hidden;border:1px solid var(--border);cursor:pointer;position:relative;background:#fff;">
@@ -1275,7 +1204,6 @@ function openDetail(docId){
     }
   }
 
-  // Neither video nor images — show the box placeholder as before.
   if(!hasVideo && !hasImages){
     media = `<div class="pd-img" style="font-size:52px">📦</div>`;
   }
@@ -1299,8 +1227,6 @@ function openDetail(docId){
     <a class="pd-call-btn" href="tel:01410635134">📞 কল করুন — 01410635134</a>
   `;
   om('pd-overlay');
-  // Reflect the open product in the URL so the link can be shared/used in ads.
-  // Anyone opening metro-bd.com/?product=DOCID will land directly on this product.
   try{
     const url=new URL(window.location.href);
     if(url.searchParams.get('product')!==docId){
@@ -1310,8 +1236,6 @@ function openDetail(docId){
   }catch(e){}
 }
 
-// Closes the product detail modal AND removes ?product=... from the URL,
-// so the address bar goes back to a clean shop link.
 function closeDetail(){
   cm('pd-overlay');
   try{
@@ -1323,8 +1247,6 @@ function closeDetail(){
   }catch(e){}
 }
 
-// If the page is loaded with ?product=DOCID in the URL (e.g. from a Facebook ad),
-// open that product's detail modal automatically once products have loaded.
 let _deepLinkHandled=false;
 function tryOpenDeepLinkProduct(){
   if(_deepLinkHandled) return;
@@ -1340,9 +1262,6 @@ function tryOpenDeepLinkProduct(){
 
 // ══════════════════════════════════
 // EXIT-INTENT OFFER POPUP
-// Shows the single best-discounted active product once per visit when the
-// customer looks like they're about to leave — desktop: mouse moves toward
-// the tab/address bar. mobile: first press of the device back button.
 // ══════════════════════════════════
 function getBestOfferProduct(){
   const eligible = products.filter(p=>p.status!=='Inactive' && p.regular && p.sale && p.sale<p.regular);
@@ -1357,7 +1276,7 @@ function getBestOfferProduct(){
 function showExitOffer(){
   if(sessionStorage.getItem('mb_exit_shown')==='1') return;
   const p = getBestOfferProduct();
-  if(!p) return; // no discounted product to show — don't interrupt the customer for nothing
+  if(!p) return;
   sessionStorage.setItem('mb_exit_shown','1');
   const disc = Math.round((1-p.sale/p.regular)*100);
   const mainImg = productThumb(p, 600);
@@ -1373,22 +1292,14 @@ function showExitOffer(){
   om('exit-offer-overlay');
 }
 
-// Desktop: cursor moving up past the top of the viewport = heading for tab/address bar
 document.addEventListener('mouseout', function(e){
   if(!e.relatedTarget && !e.toElement && e.clientY<=0){
     showExitOffer();
   }
 });
 
-// Mobile: catch the first back-button press with a history "guard" entry.
-// On load we push one extra state; the first time the user presses back,
-// popstate fires (URL doesn't actually change) and we show the offer instead
-// of letting them leave immediately. Pressing back again leaves normally.
 history.pushState({mbGuard:true},'',window.location.href);
 
-// Support browser/device back button: closing via back should also close the modal,
-// re-open a deep-linked product, switch to a deep-linked category, or — if the customer
-// is leaving with nothing open — show the exit-intent offer once.
 window.addEventListener('popstate',function(){
   const params=new URLSearchParams(window.location.search);
   const pid=params.get('product');
@@ -1408,7 +1319,6 @@ window.addEventListener('popstate',function(){
     return;
   }
   if(!cat){
-    // Back to the "all products" view — make sure the "সব পণ্য" chip shows as active again.
     const allChip=document.querySelector('.cat-chip');
     if(allChip && curCat!=='all'){
       curCat='all';
@@ -1433,8 +1343,6 @@ function setPdMainImage(idx){
   });
 }
 
-// Full-screen image zoom/lightbox — lets a customer tap any product photo to see it large,
-// and swipe/click through all of the product's images one at a time.
 let zoomImgIdx = 0;
 function openImageZoom(idx){
   if(!pdImages.length) return;
@@ -1458,7 +1366,7 @@ function zoomNav(d){
 function chQty(d){curQty=Math.max(1,curQty+d);document.getElementById('pd-qty').textContent=curQty;if(curProd)document.getElementById('pd-total').textContent=((curProd.sale||curProd.regular||0)*curQty).toLocaleString();}
 
 // ══════════════════════════════════
-// DELIVERY — always free, no charge added to any order.
+// DELIVERY — always free
 // ══════════════════════════════════
 function getDelCharge(){ return 0; }
 
@@ -1479,14 +1387,12 @@ function updSumm(){
 // ══════════════════════════════════
 function openOrderModal(docId){
   if(docId) curProd=findProd(docId)||curProd;
-  // Manual (product-less) ordering is disabled — an order can only be placed with a
-  // product attached. If somehow no product is selected, send the customer to the shop.
   if(!curProd){
     showToast('আগে একটি পণ্য সিলেক্ট করুন','#EF4444');
     showTab('shop');
     return;
   }
-  draftOrderId = null; // fresh draft tracking each time the modal opens
+  draftOrderId = null;
   orderSubmitted = false;
   clearTimeout(draftSaveTimer);
   document.getElementById('order-form-wrap').style.display='block';
@@ -1514,11 +1420,6 @@ function oChQty(d){curQty=Math.max(1,curQty+d);document.getElementById('oqw-num'
 
 // ══════════════════════════════════
 // INCOMPLETE / DRAFT ORDERS
-// As soon as a visitor has typed enough to identify them (name OR phone), we save a
-// lightweight "Incomplete" order document. If they finish and submit, this same document
-// gets upgraded to a real "Processing" order (see submitOrder). If they abandon the form,
-// the admin can still see & follow up with them under "Incomplete Orders".
-// Debounced so we don't write to Firestore on every single keystroke.
 // ══════════════════════════════════
 function scheduleDraftSave(){
   clearTimeout(draftSaveTimer);
@@ -1526,14 +1427,10 @@ function scheduleDraftSave(){
 }
 
 function saveDraftOrder(){
-  // Order already confirmed — never write another Incomplete draft for it. This fixes the
-  // bug where a delayed draft save (debounce timer or blur event) could land AFTER the
-  // customer pressed confirm and flip the order's status back to "Incomplete".
   if(orderSubmitted) return;
   const name=document.getElementById('o-name').value.trim();
   const phone=document.getElementById('o-phone').value.trim();
   const address=document.getElementById('o-address').value.trim();
-  // Only bother saving a draft once there's at least a name or phone to follow up with.
   if(!name && !phone) return;
   const p=curProd;
   const now=new Date();
@@ -1561,9 +1458,6 @@ function saveDraftOrder(){
   } else {
     ORDERS_COL.add(draftData).then(ref=>{
       if(orderSubmitted){
-        // The customer confirmed the order while this draft-create was still in flight —
-        // the confirmed order was saved as its own document, so this draft is a leftover
-        // duplicate. Remove it so it never shows up in the admin's Incomplete list.
         ORDERS_COL.doc(ref.id).delete().catch(()=>{});
       } else {
         draftOrderId = ref.id;
@@ -1587,14 +1481,8 @@ function submitOrder(){
   const sub=p?(p.sale||p.regular||0)*(curQty||1):0;
   const now=new Date();
   const mainImg = productThumb(p, 400);
-  // From this point on, no more Incomplete draft writes are allowed for this order —
-  // this (plus the guard in saveDraftOrder) is what keeps a confirmed order from being
-  // flipped back to "Incomplete" by a late draft save.
   orderSubmitted = true;
   clearTimeout(draftSaveTimer);
-  // Each order becomes its OWN document in metrobd_orders (not appended to a shared array anymore).
-  // This means many customers can place orders at the same time without write conflicts, and the
-  // orders collection can grow to any size without ever hitting Firestore's 1MB-per-document limit.
   const order={
     invoice:'MB'+String(Date.now()).slice(-6),name,phone,address,
     product:p?p.name:'Manual',productId:p?p.id:null,productImage:mainImg,qty:curQty||1,price:p?(p.sale||p.regular||0):0,
@@ -1612,25 +1500,19 @@ function submitOrder(){
     document.getElementById('order-form-wrap').style.display='none';
     document.getElementById('order-success').style.display='block';
     const sp=document.getElementById('success-phone');if(sp)sp.textContent=phone;
-    // Fire the Purchase conversion event for whichever ad pixels are installed. This is the
-    // single most important event for ad optimization — without it, Meta/TikTok only know
-    // people *visited* the site, not who actually bought something, so their algorithms can't
-    // learn who to show ads to for better results.
-    firePurchaseEvent(order.total, order.qty);
+    // Purchase event — product passed so TikTok/FB get content_id, name, price.
+    firePurchaseEvent(order.total, order.qty, p);
     curProd=null;curQty=1;draftOrderId=null;
     if(btn){btn.textContent='✅ অর্ডার কনফার্ম করুন';btn.disabled=false;}
   }
   function onFail(err){
     console.error(err);
-    // Order didn't go through — allow draft saving again so the visitor isn't lost.
     orderSubmitted = false;
     showToast('অর্ডার করতে সমস্যা হয়েছে, আবার চেষ্টা করুন','#EF4444');
     if(btn){btn.textContent='✅ অর্ডার কনফার্ম করুন';btn.disabled=false;}
   }
 
   if(draftOrderId){
-    // Upgrade the existing draft (created while the visitor was filling the form) into a
-    // real order, instead of creating a brand-new document — avoids duplicate entries.
     ORDERS_COL.doc(draftOrderId).set(order,{merge:true}).then(onSuccess).catch(onFail);
   } else {
     ORDERS_COL.add(order).then(onSuccess).catch(onFail);
@@ -1661,7 +1543,6 @@ function openCart(){
 }
 function rmCart(docId){cart=cart.filter(c=>c.id!==docId);sd('mb_cart',cart);updateCart();openCart();}
 function checkoutCart(){
-  // Ordering always needs a product attached — open the order form for the first cart item.
   if(!cart.length){ showToast('Cart খালি — আগে পণ্য যোগ করুন','#EF4444'); return; }
   const first = findProd(cart[0].id);
   cm('cart-overlay');
@@ -1683,8 +1564,6 @@ function showToast(msg,bg='#22C55E'){const el=document.getElementById('toast');e
 // ══════════════════════════════════
 updateCart();
 
-// Settings, categories & banners: realtime sync from the small shared store document (fine to
-// keep realtime, this document never grows large since orders/products no longer live inside it).
 STORE_DOC.onSnapshot(doc=>{
   if(doc.exists){
     const d=doc.data();
@@ -1701,27 +1580,11 @@ STORE_DOC.onSnapshot(doc=>{
   showToast('সেটিংস লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
 });
 
-// The admin panel keeps a single lightweight "snapshot" document containing every product in
-// one array. Reading this ONE doc is 5-10x faster than pulling the 48-doc collection over
-// mobile data, so we hit it first for the instant paint, then let the realtime collection
-// listener take over for live updates. Falls back gracefully if the snapshot doesn't exist yet.
 const PRODUCTS_SNAPSHOT_DOC = db.collection('metrobd').doc('products-snapshot');
 
-// Products: realtime listener (onSnapshot) instead of a one-time get(). This fixes the bug where
-// the page would show "No products found" on first load — get() could be slow/fail on weak mobile
-// connections with no loading indicator, so the empty-state showed before data ever arrived.
-// onSnapshot fires as soon as it has data (from cache or server) and keeps listening, so once the
-// connection succeeds the grid updates itself without needing a manual page refresh.
 let productsUnsub=null;
-let productsGotRealResponse=false; // flips true only after Firestore has answered with >=1 product
+let productsGotRealResponse=false;
 function loadProducts(){
-  // Cache-first: instantly render whatever we showed last time (from localStorage)
-  // so the customer sees products the moment the page opens, instead of staring at
-  // a spinner while Firestore fetches fresh data over the network. Firestore's
-  // real (possibly updated) data then replaces it silently a moment later.
-  // GUARD: ignore an empty-array cache (`[]`). An earlier deploy or a transient Firestore quota
-  // dip could have written `[]` here, and using it would show "0 products" instantly even when
-  // Firestore is fine — treat empty-cache as no cache.
   try{
     const cached = localStorage.getItem('mb_products_cache');
     if(cached){
@@ -1737,10 +1600,6 @@ function loadProducts(){
   }catch(e){}
   if(!products.length) { productsLoading=true; productsError=false; renderProducts(); }
 
-  // FAST PATH — grab the single snapshot document. One tiny read finishes way before the
-  // full collection query would, so first-time visitors (no localStorage cache) see the shop
-  // grid within a few hundred ms instead of 2-4 seconds staring at a loader. The snapshot
-  // also carries banners + categories + settings, so the header/banner paints in the same tick.
   PRODUCTS_SNAPSHOT_DOC.get().then(doc=>{
     if(!doc.exists) return;
     const data = doc.data();
@@ -1754,7 +1613,6 @@ function loadProducts(){
       try{ localStorage.setItem('mb_products_cache', JSON.stringify(products)); }catch(e){}
       paintedSomething = true;
     }
-    // Banners / categories / settings from the same snapshot — no waiting on STORE_DOC.
     if(Array.isArray(data.banners)){ banners = data.banners; paintedSomething = true; }
     if(Array.isArray(data.categories)){ categories = data.categories; paintedSomething = true; }
     if(data.settings && typeof data.settings === 'object'){ settings = data.settings; }
@@ -1766,23 +1624,15 @@ function loadProducts(){
       tryOpenDeepLinkProduct();
     }
   }).catch(err=>{
-    // Snapshot missing or unreadable — no problem, the collection listener below will fill in.
     console.warn('Snapshot fast-path skipped:', err && err.message);
   });
 
-  if(productsUnsub) productsUnsub(); // avoid stacking duplicate listeners if retried manually
+  if(productsUnsub) productsUnsub();
   productsUnsub = PRODUCTS_COL.onSnapshot(snap=>{
     const fresh = snap.docs.map(d=>({...d.data(), _docId:d.id}));
-    // GUARD 1: Firestore fires onSnapshot from local cache FIRST (before server responds) for
-    // fresh visitors — that first fire is empty since the cache is empty. Ignore it, we'll get
-    // the real server response in the next fire. Without this, the customer briefly saw an
-    // "error loading products" state during the ~1-2s until server responded.
     if(!fresh.length && snap.metadata && snap.metadata.fromCache){
       return;
     }
-    // DEFENSIVE: never overwrite a non-empty local products list with an empty snapshot. This
-    // guards against Firestore returning empty during a rules/quota hiccup — the customer keeps
-    // seeing the last-known-good products instead of a suddenly blank page mid-ad-campaign.
     if(!fresh.length && products.length){
       console.warn('Firestore returned 0 products but local list has '+products.length+'; keeping existing list.');
       return;
@@ -1793,14 +1643,9 @@ function loadProducts(){
     renderProducts();
     renderCustomerBanners();
     tryOpenDeepLinkProduct();
-    // GUARD: only cache when we actually have products. Never cache `[]` — an empty cache
-    // would poison the next page load. (See the read guard above.)
     if(fresh.length){
       try{ localStorage.setItem('mb_products_cache', JSON.stringify(fresh)); }catch(e){}
     }
-    // If Firestore came back empty on a fresh visit (no cache, no products) — that's almost
-    // certainly a config/quota issue, NOT truly zero products. Show the retry state so the
-    // customer at least has a button, and surface a toast so we notice fast.
     if(!fresh.length && !productsGotRealResponse){
       productsError=true;
       renderProducts();
@@ -1809,8 +1654,6 @@ function loadProducts(){
     }
   }, err=>{
     console.error('Firebase products load error:',err);
-    // If we already have cached products showing, a background refresh failure
-    // shouldn't wipe the page — just leave what's on screen.
     if(!products.length){
       productsLoading=false; productsError=true;
       renderProducts();
