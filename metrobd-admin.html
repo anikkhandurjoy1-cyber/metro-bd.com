@@ -881,6 +881,8 @@ let ordersPageUnsub = null; // live listener for whichever orders page is curren
 let unsubscribeStore=null;
 let unsubscribeNewOrders=null;
 let lastSeenOrderTs=null;   // createdAtTs (ms) of the most recent order the admin has acknowledged
+let seenOrderIds=new Set(); // real (non-draft) orders the bell already knows about
+let watcherOldestTs=0;      // oldest createdAtTs in the first snapshot — older docs never ring
 let newOrderCount=0;        // how many orders have arrived since last acknowledged
 let newOrderSound=null;
 
@@ -928,43 +930,73 @@ function oldCustBadge(phone){
 // pop up live without needing to keep re-fetching/paginating the full Orders list.
 function startNewOrderWatcher(){
   if(unsubscribeNewOrders) return;
-  unsubscribeNewOrders = ORDERS_COL.orderBy('createdAtTs','desc').limit(1).onSnapshot(snap=>{
+  // Watch the 10 newest orders (not just 1). With limit(1), if a real order and another
+  // customer's in-progress draft landed at almost the same moment, the snapshot could show only
+  // the draft and the real order's bell was missed. Now every real order rings exactly once:
+  //  • Drafts ('Incomplete') never ring.
+  //  • A draft upgraded to 'Processing' keeps the same doc ID but isn't in seenOrderIds yet → rings once.
+  //  • Orders the admin creates by hand (source 'admin-manual') don't ring.
+  //  • Older orders sliding into the window (e.g. after a delete) don't ring (watcherOldestTs).
+  unsubscribeNewOrders = ORDERS_COL.orderBy('createdAtTs','desc').limit(10).onSnapshot(snap=>{
     if(snap.empty) return;
-    const latest = snap.docs[0].data();
-    const latestTs = latest.createdAtTs && latest.createdAtTs.toMillis ? latest.createdAtTs.toMillis() : 0;
-    // A brand-new order means this phone's cached order-count is now stale — clear it so the
-    // old-customer badge recalculates correctly the next time the Orders page renders.
-    if(latest.phone){ delete phoneOrderCountCache[(latest.phone||'').trim()]; }
+    const tsOf = o => o.createdAtTs && o.createdAtTs.toMillis ? o.createdAtTs.toMillis() : 0;
+    const docs = snap.docs.map(d=>({...d.data(), _docId:d.id}));
     if(lastSeenOrderTs===null){
-      // First load after login/refresh: just record the current latest order, don't alert
-      // for orders that already existed before this admin session started.
-      lastSeenOrderTs = latestTs;
+      // First load after login/refresh: remember what already exists, don't alert for it.
+      docs.forEach(o=>{ if(o.status!=='Incomplete') seenOrderIds.add(o._docId); });
+      const allTs = docs.map(tsOf).filter(Boolean);
+      watcherOldestTs = allTs.length ? Math.min(...allTs) : 0;
+      lastSeenOrderTs = allTs.length ? Math.max(...allTs) : 0;
       return;
     }
-    // Skip Incomplete drafts entirely — the bell should only ring for a real, completed
-    // order (status 'Processing'). A draft later gets upgraded in-place to 'Processing',
-    // which bumps createdAtTs again; we still want exactly ONE ring, at that point.
-    if(latest.status==='Incomplete'){
-      lastSeenOrderTs = latestTs; // remember it so the later upgrade is still detected as "newer"
-      return;
-    }
-    if(latestTs > lastSeenOrderTs){
-      lastSeenOrderTs = latestTs;
-      newOrderCount++;
-      showNewOrderBell();
-      toast('🛒 নতুন অর্ডার এসেছে! ('+(latest.name||'')+')','var(--green,#22C55E)');
-      playNewOrderSound();
-      // The Orders table (if open) already updates itself live via the onSnapshot listener in
-      // loadOrdersPage() — no need to force a reload or navigate away from wherever the admin
-      // currently is. Just clear the bell badge quietly since they can already see it.
-      const active=document.querySelector('.page.active');
-      const pid = active ? active.id.replace('pg-','') : '';
-      if(pid==='orders'){ clearBellQuietly(); }
-      else if(pid==='dashboard'){ loadDashboard(true); clearBellQuietly(); }
-    }
+    const fresh = docs.filter(o=>
+      o.status!=='Incomplete' &&
+      !seenOrderIds.has(o._docId) &&
+      tsOf(o) >= watcherOldestTs
+    );
+    fresh.forEach(o=>seenOrderIds.add(o._docId));
+    const tsList = docs.map(tsOf).filter(Boolean);
+    if(tsList.length) lastSeenOrderTs = Math.max(lastSeenOrderTs, ...tsList);
+    const customerOrders = fresh.filter(o=>o.source!=='admin-manual');
+    if(!fresh.length) return;
+    // A brand-new order means these phones' cached order-counts are now stale — clear them so the
+    // old-customer badge recalculates correctly the next time the Orders page renders.
+    fresh.forEach(o=>{ if(o.phone){ delete phoneOrderCountCache[(o.phone||'').trim()]; } });
+    // Keep the dashboard current WITHOUT re-downloading every order: merge the new docs into the
+    // sample and bump the cached totals locally (a full recount on every order = thousands of reads).
+    mergeNewOrdersIntoDashboard(fresh);
+    if(!customerOrders.length) return;
+    newOrderCount += customerOrders.length;
+    showNewOrderBell();
+    const latest = customerOrders[0];
+    toast('🛒 নতুন অর্ডার এসেছে! ('+(latest.name||'')+')'+(customerOrders.length>1?' +'+(customerOrders.length-1):''),'var(--green,#22C55E)');
+    playNewOrderSound();
+    // The Orders table (if open) already updates itself live via the onSnapshot listener in
+    // loadOrdersPage() — no need to force a reload. Just clear the bell badge quietly.
+    const active=document.querySelector('.page.active');
+    const pid = active ? active.id.replace('pg-','') : '';
+    if(pid==='orders'){ clearBellQuietly(); }
+    else if(pid==='dashboard'){ renderDashboard(); clearBellQuietly(); }
   }, err=>{
     console.error('New order watcher error:',err);
   });
+}
+
+// Adds freshly-arrived orders to the dashboard sample and bumps the cached true totals, so the
+// dashboard stays correct without a full re-download of every order.
+function mergeNewOrdersIntoDashboard(fresh){
+  fresh.forEach(o=>{
+    const prev = dashboardOrdersSample.find(x=>x._docId===o._docId);
+    if(dashboardTrueTotals){
+      // A draft that was already counted in `total` just changes status; a direct order is new.
+      if(!prev) dashboardTrueTotals.total = (dashboardTrueTotals.total||0) + 1;
+      if(prev && prev.status && dashboardTrueTotals[prev.status]!=null && dashboardTrueTotals[prev.status]>0) dashboardTrueTotals[prev.status]--;
+      if(o.status && dashboardTrueTotals[o.status]!=null) dashboardTrueTotals[o.status]++;
+      saveTrueTotalsCache();
+    }
+  });
+  const ids = new Set(fresh.map(o=>o._docId));
+  dashboardOrdersSample = fresh.concat(dashboardOrdersSample.filter(x=>!ids.has(x._docId))).slice(0, DASHBOARD_SAMPLE_LIMIT);
 }
 
 function showNewOrderBell(){
@@ -1064,7 +1096,8 @@ function updateProductsSnapshot(){
     PRODUCTS_SNAPSHOT_DOC.set({
       products: products.map(p=>{
         const c = {...p};
-        delete c._docId; // internal handle, not needed on the customer side
+        // Keep _docId — the customer site uses it for product taps, "অর্ডার করুন" and ?product= links.
+        // Only the Firestore DocumentReference (not serializable) is removed.
         delete c._docRef;
         return c;
       }),
@@ -1155,7 +1188,7 @@ function doLogout(){
   localStorage.removeItem('mb_admin_session');
   if(unsubscribeNewOrders){ unsubscribeNewOrders(); unsubscribeNewOrders=null; }
   if(ordersPageUnsub){ ordersPageUnsub(); ordersPageUnsub=null; }
-  lastSeenOrderTs=null; newOrderCount=0;
+  lastSeenOrderTs=null; newOrderCount=0; seenOrderIds=new Set(); watcherOldestTs=0;
   document.getElementById('new-order-bell').style.display='none';
   document.getElementById('admin-panel').style.display='none';
   document.getElementById('login-page').style.display='flex';
@@ -1304,8 +1337,30 @@ function loadDashboard(force){
 // which aren't exposed on the compat Query in older SDKs). One page ≈ 500 reads; Anik's ~200
 // orders = 1 page. Safety cap at 20 000 orders. Cached 3 minutes; new orders bust the cache
 // via the new-order watcher (which calls loadDashboard(true)).
+// Full recount pages through EVERY order (1 read per order). With thousands of orders, doing that
+// on every dashboard open / page reload burns the Firestore read quota — and if the quota runs out
+// the customer site can't load products either. So the totals are cached for 15 minutes AND kept
+// in localStorage across reloads; new orders bump them locally (mergeNewOrdersIntoDashboard) and
+// any admin order edit/delete marks them stale (markTrueTotalsStale) so the next open recounts.
+const TRUE_TOTALS_CACHE_MS = 15*60*1000;
+function saveTrueTotalsCache(){
+  try{ localStorage.setItem('mb_true_totals', JSON.stringify({t:dashboardTrueTotals, at:dashboardTrueCountsLoadedAt})); }catch(e){}
+}
+function markTrueTotalsStale(){
+  dashboardTrueCountsLoadedAt = 0;
+  try{ localStorage.removeItem('mb_true_totals'); }catch(e){}
+}
 function loadDashboardTrueCounts(force){
-  if(!force && dashboardTrueTotals && (Date.now()-dashboardTrueCountsLoadedAt)<DASHBOARD_CACHE_MS) return;
+  if(!dashboardTrueTotals){
+    try{
+      const c = JSON.parse(localStorage.getItem('mb_true_totals')||'null');
+      if(c && c.t && (Date.now()-c.at)<TRUE_TOTALS_CACHE_MS){
+        dashboardTrueTotals = c.t; dashboardTrueCountsLoadedAt = c.at;
+        renderDashboard();
+      }
+    }catch(e){}
+  }
+  if(!force && dashboardTrueTotals && (Date.now()-dashboardTrueCountsLoadedAt)<TRUE_TOTALS_CACHE_MS) return;
   const PAGE = 500;
   const SAFETY_CAP = 20000;
   const c = {total:0, 'Processing':0, 'Payment Pending':0, 'On Hold':0, 'Canceled':0, 'Completed':0, 'Delivered':0, revenue:0};
@@ -1331,6 +1386,7 @@ function loadDashboardTrueCounts(force){
     dashboardTrueTotals = { total: c.total, 'Processing': c['Processing'], 'Payment Pending': c['Payment Pending'],
       'On Hold': c['On Hold'], 'Canceled': c['Canceled'], 'Completed': c['Completed'], 'Delivered': c['Delivered'], revenue: c.revenue };
     dashboardTrueCountsLoadedAt = Date.now();
+    saveTrueTotalsCache();
     renderDashboard();
     console.log('[Dashboard] True totals loaded:', dashboardTrueTotals);
   }).catch(err=>{
@@ -1338,6 +1394,7 @@ function loadDashboardTrueCounts(force){
   });
 }
 
+let incBadgeCount = null, incBadgeLoadedAt = 0;
 function renderDashboard(){
   const today = localDate();
   const src = dashboardOrdersSample;
@@ -1370,9 +1427,18 @@ function renderDashboard(){
   document.getElementById('inc-badge').textContent = inc + (sampleCapped?'+':'');
   // The 500-order sample above might miss older incomplete drafts, so also fetch the real
   // incomplete count directly (cheap query — Incomplete orders are usually a small set).
-  ORDERS_COL.where('status','==','Incomplete').limit(200).get().then(snap=>{
-    document.getElementById('inc-badge').textContent = snap.docs.length + (snap.docs.length>=200?'+':'');
-  }).catch(()=>{});
+  // Throttled to once a minute — renderDashboard runs several times per open, and each run used to
+  // re-read up to 200 draft docs.
+  if(incBadgeCount!==null){
+    document.getElementById('inc-badge').textContent = incBadgeCount + (incBadgeCount>=200?'+':'');
+  }
+  if(Date.now()-incBadgeLoadedAt > 60000){
+    incBadgeLoadedAt = Date.now();
+    ORDERS_COL.where('status','==','Incomplete').limit(200).get().then(snap=>{
+      incBadgeCount = snap.docs.length;
+      document.getElementById('inc-badge').textContent = incBadgeCount + (incBadgeCount>=200?'+':'');
+    }).catch(()=>{ incBadgeLoadedAt = 0; });
+  }
 
   // "Today Orders" uses the createdAtTs timestamp compared against today's LOCAL BD midnight range —
   // that way even orders written by an older code build (which stored a UTC-based `date` field)
@@ -1575,7 +1641,9 @@ function updateOS(){
   const o=findLoadedOrder(curEditOId); if(!o) return;
   const newStatus=document.getElementById('ns').value;
   const newCourier=document.getElementById('es-cou').value||o.courier||'';
+  if(newStatus!=='Incomplete') seenOrderIds.add(curEditOId); // admin's own status change — no bell
   ORDERS_COL.doc(curEditOId).update({status:newStatus, courier:newCourier}).then(()=>{
+    markTrueTotalsStale();
     o.status=newStatus; o.courier=newCourier;
     // If this order is no longer "Incomplete", drop it from the incomplete cache too.
     if(newStatus!=='Incomplete'){ incompleteOrdersCache=incompleteOrdersCache.filter(x=>x._docId!==curEditOId); }
@@ -1777,6 +1845,7 @@ function saveFullOrderEdit(){
     };
     ORDERS_COL.add(newOrder).then(()=>{
       creatingNewOrder = false;
+      markTrueTotalsStale();
       cm('edit-order-modal');
       toast('নতুন অর্ডার তৈরি হয়েছে! ✅ ' + newOrder.invoice);
       const active = document.querySelector('.page.active');
@@ -1791,7 +1860,9 @@ function saveFullOrderEdit(){
     return;
   }
 
+  if(updateData.status && updateData.status!=='Incomplete') seenOrderIds.add(curEditOId); // admin edit — no bell
   ORDERS_COL.doc(curEditOId).update(updateData).then(()=>{
+    markTrueTotalsStale();
     // Update whichever local cache currently holds this order so the UI reflects changes
     // immediately without needing a full reload.
     const oInMain = findLoadedOrder(curEditOId);
@@ -1816,6 +1887,7 @@ function saveFullOrderEdit(){
 function delOrder(docId){
   if(!confirm('Delete?')) return;
   ORDERS_COL.doc(docId).delete().then(()=>{
+    markTrueTotalsStale();
     orders=orders.filter(o=>o._docId!==docId);
     incompleteOrdersCache=incompleteOrdersCache.filter(o=>o._docId!==docId);
     const active=document.querySelector('.page.active');
@@ -1837,8 +1909,9 @@ function bulkStatus(){
   const s=prompt('New status: Processing / Invoiced / Delivered / Completed / Canceled');
   if(!s) return;
   const batch = db.batch();
-  ids.forEach(docId=>{ batch.update(ORDERS_COL.doc(docId), {status:s}); });
+  ids.forEach(docId=>{ batch.update(ORDERS_COL.doc(docId), {status:s}); if(s!=='Incomplete') seenOrderIds.add(docId); });
   batch.commit().then(()=>{
+    markTrueTotalsStale();
     ids.forEach(docId=>{ const o=findLoadedOrder(docId); if(o) o.status=s; });
     renderOrders();
     toast(ids.length+' orders updated! ✅');
@@ -2882,8 +2955,7 @@ function manualRebuildSnapshot(){
     return PRODUCTS_SNAPSHOT_DOC.set({
       products: products.map(p=>{
         const c = {...p};
-        delete c._docId;
-        delete c._docRef;
+        delete c._docRef; // keep _docId for the customer site
         return c;
       }),
       banners: banners || [],
