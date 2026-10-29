@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://res.cloudinary.com">
+<link rel="preconnect" href="https://i.ibb.co">
 <link rel="preconnect" href="https://firestore.googleapis.com">
 <link rel="preconnect" href="https://www.gstatic.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -690,10 +691,12 @@ function videoThumb(url,w){
 // neither is available.
 function productThumb(p,w){
   if(!p) return '';
-  const vt = videoThumb(p.videoUrl, w);
-  if(vt) return vt;
+  // Product image FIRST (ImgBB etc.), video frame only when there's no image at all — so a dead
+  // Cloudinary video link can never hide a perfectly good product photo on the card.
   if(p.images && p.images.length) return cld(p.images[0], w);
   if(p.imageUrl) return cld(p.imageUrl, w);
+  const vt = videoThumb(p.videoUrl, w);
+  if(vt) return vt;
   return '';
 }
 let products=[], categories=[], settings={}, banners=[];
@@ -1218,7 +1221,7 @@ function renderProducts(){
     const imgAttrs = i<6 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"';
     return `<div class="pc" onclick="openDetail('${p._docId}')">
       <div class="pc-img"><div class="pc-img-3d">
-        ${mainImg?`<img src="${mainImg}" alt="${p.name}" ${imgAttrs} decoding="async" onerror="this.style.display='none'"><div class="pc-img-ph" style="display:none">📦</div>`:`<div class="pc-img-ph">📦</div>`}
+        ${mainImg?`<img src="${mainImg}" alt="${p.name}" ${imgAttrs} decoding="async" onerror="this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='flex'"><div class="pc-img-ph" style="display:none">📦</div>`:`<div class="pc-img-ph">📦</div>`}
         </div>
         ${p.videoUrl?'<div class="vid-badge">▶ Video</div>':''}
         ${disc>0?`<div class="disc-badge">-${disc}%</div>`:''}
