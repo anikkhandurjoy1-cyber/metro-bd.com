@@ -597,6 +597,15 @@ tr:hover td{background:rgba(0,0,0,0.02);}
         </div>
         <button class="btn btn-p" onclick="runImageMigration()" id="migrate-img-btn">🖼️ Image Migration শুরু করুন</button>
         <div id="img-migration-log" style="margin-top:14px;font-size:12px;font-family:monospace;background:var(--surface);border-radius:8px;padding:12px;display:none;max-height:300px;overflow-y:auto;white-space:pre-wrap;"></div>
+        <div class="divider"></div>
+        <div class="ss-title" style="border-bottom:none;margin-bottom:6px;padding-bottom:0;">☁️ পুরনো Cloudinary → নতুন Cloudinary</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:14px;font-family:'Hind Siliguri';">
+          পুরনো account (jqkplosf)-এর সব প্রোডাক্ট ছবি, ভিডিও ও ব্যানার ছবি নতুন account-এ কপি করে লিংক আপডেট করবে।<br><br>
+          ⚠️ <b>পুরনো account unblock থাকতে হবে</b> — block থাকলে ফেইল দেখাবে, পুরনো লিংকই থাকবে।<br>
+          ✅ ফেইল হওয়াগুলো আবার বাটন চাপলে আবার চেষ্টা হবে।
+        </div>
+        <button class="btn btn-p" onclick="runOldCloudinaryMigration()" id="migrate-oldcld-btn">☁️ Cloudinary Migration শুরু করুন</button>
+        <div id="oldcld-migration-log" style="margin-top:14px;font-size:12px;font-family:monospace;background:var(--surface);border-radius:8px;padding:12px;display:none;max-height:300px;overflow-y:auto;white-space:pre-wrap;"></div>
       </div>
     </div>
   </div>
@@ -820,8 +829,11 @@ const ORDERS_COL = db.collection('metrobd_orders');
 const PRODUCTS_COL = db.collection('metrobd_products');
 
 // Cloudinary (unsigned upload) — used for all product & banner image uploads.
-const CLOUDINARY_CLOUD_NAME = "jqkplosf";
-const CLOUDINARY_UPLOAD_PRESET = "metrobd-product";
+// NEW Cloudinary account (Oct 2026). The old account "jqkplosf" was blocked by Cloudinary —
+// its images are copied over with the "Old Cloudinary → New" migration button in Settings.
+const CLOUDINARY_CLOUD_NAME = "ckjcfcld";
+const CLOUDINARY_UPLOAD_PRESET = "metrobd";
+const OLD_CLOUDINARY_CLOUD_NAME = "jqkplosf";
 const CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD_NAME+"/image/upload";
 const CLOUDINARY_VIDEO_UPLOAD_URL = "https://api.cloudinary.com/v1_1/"+CLOUDINARY_CLOUD_NAME+"/video/upload";
 
@@ -2940,6 +2952,104 @@ async function runImageMigration(){
   }
   btn.disabled = false;
   btn.textContent = '🖼️ Image Migration শুরু করুন';
+}
+
+// ══════════════════════════════════════════
+// OLD CLOUDINARY → NEW CLOUDINARY MIGRATION
+// Copies images AND videos from the blocked old account (jqkplosf) into the new account using
+// Cloudinary's remote-URL upload (new account fetches the old URL server-side). Only works while
+// the old account's delivery is unblocked. Failed items keep their old link → re-run retries them.
+// ══════════════════════════════════════════
+function oldCldLog(msg){
+  const el = document.getElementById('oldcld-migration-log');
+  el.style.display = 'block';
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+function isOldCloudinaryUrl(u){
+  return typeof u === 'string' && u.includes('res.cloudinary.com/' + OLD_CLOUDINARY_CLOUD_NAME + '/');
+}
+function cloudinaryCopyRemote(url, isVideo){
+  const fd = new FormData();
+  fd.append('file', url);
+  fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  return fetch(isVideo ? CLOUDINARY_VIDEO_UPLOAD_URL : CLOUDINARY_UPLOAD_URL, {method:'POST', body:fd})
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.secure_url) return d.secure_url;
+      throw new Error((d.error && d.error.message) ? d.error.message : 'Upload failed');
+    });
+}
+async function runOldCloudinaryMigration(){
+  const btn = document.getElementById('migrate-oldcld-btn');
+  document.getElementById('oldcld-migration-log').textContent = '';
+  btn.disabled = true;
+  btn.textContent = '⏳ Migration চলছে...';
+  let prodSaved = 0, ok = 0, fail = 0, found = 0;
+  try{
+    if(!products.length){ oldCldLog('🔍 প্রোডাক্ট লোড করা হচ্ছে...'); await loadProducts(); }
+    oldCldLog('🔍 পুরনো Cloudinary ফাইল খোঁজা হচ্ছে ('+products.length+' টা প্রোডাক্ট)...');
+    for(const p of products){
+      const urls = (p.images && p.images.length) ? [...p.images] : (p.imageUrl ? [p.imageUrl] : []);
+      const hasOldImg = urls.some(isOldCloudinaryUrl);
+      const hasOldVid = isOldCloudinaryUrl(p.videoUrl);
+      if(!hasOldImg && !hasOldVid) continue;
+      found++;
+      oldCldLog('📦 ' + p.name);
+      const update = {};
+      if(hasOldImg){
+        const newUrls = []; let changed = false;
+        for(const u of urls){
+          if(isOldCloudinaryUrl(u)){
+            try{ newUrls.push(await cloudinaryCopyRemote(u, false)); changed = true; ok++; oldCldLog('   ✅ ছবি কপি হয়েছে'); }
+            catch(err){ newUrls.push(u); fail++; oldCldLog('   ❌ ছবি ফেইল: ' + err.message); }
+          } else newUrls.push(u);
+        }
+        if(changed){ update.images = newUrls; update.imageUrl = newUrls[0] || ''; }
+      }
+      if(hasOldVid){
+        try{ update.videoUrl = await cloudinaryCopyRemote(p.videoUrl, true); ok++; oldCldLog('   ✅ ভিডিও কপি হয়েছে'); }
+        catch(err){ fail++; oldCldLog('   ❌ ভিডিও ফেইল: ' + err.message); }
+      }
+      if(Object.keys(update).length){
+        try{
+          await PRODUCTS_COL.doc(p._docId).set(update, {merge:true});
+          Object.assign(p, update);
+          prodSaved++;
+          oldCldLog('   💾 প্রোডাক্ট আপডেট হয়েছে');
+        }catch(err){ oldCldLog('   ❌ প্রোডাক্ট সেভ ফেইল: ' + err.message); }
+      }
+    }
+    let bannersChanged = false;
+    for(const b of banners){
+      if(b.type !== 'image') continue;
+      const urls = (b.images && b.images.length) ? [...b.images] : (b.url ? [b.url] : []);
+      if(!urls.some(isOldCloudinaryUrl)) continue;
+      found++;
+      oldCldLog('🖼️ Banner: ' + (b.text || '(নাম নেই)'));
+      const newUrls = [];
+      for(const u of urls){
+        if(isOldCloudinaryUrl(u)){
+          try{ newUrls.push(await cloudinaryCopyRemote(u, false)); ok++; bannersChanged = true; oldCldLog('   ✅ ছবি কপি হয়েছে'); }
+          catch(err){ newUrls.push(u); fail++; oldCldLog('   ❌ ছবি ফেইল: ' + err.message); }
+        } else newUrls.push(u);
+      }
+      b.images = newUrls; b.url = newUrls[0] || '';
+    }
+    if(bannersChanged){
+      try{ await saveAll(); oldCldLog('💾 Banner আপডেট হয়েছে'); }
+      catch(err){ oldCldLog('❌ Banner সেভ ফেইল: ' + err.message); }
+    }
+    if(prodSaved) updateProductsSnapshot();
+    oldCldLog('');
+    if(!found) oldCldLog('✅ পুরনো Cloudinary-র কোনো ফাইল পাওয়া যায়নি — সব already নতুন account-এ।');
+    else {
+      oldCldLog('🎉 শেষ! ' + prodSaved + ' টা প্রোডাক্ট আপডেট, ' + ok + ' টা ফাইল কপি, ' + fail + ' টা ফেইল।');
+      if(fail) oldCldLog('👉 সব ফেইল হলে পুরনো account এখনও block — unblock হলে আবার বাটন চাপুন।');
+    }
+  }catch(err){ oldCldLog('❌ Error: ' + err.message); }
+  btn.disabled = false;
+  btn.textContent = '☁️ Cloudinary Migration শুরু করুন';
 }
 
 // Manual rebuild — used by the button in Settings → Data Migration when Anik wants to force
